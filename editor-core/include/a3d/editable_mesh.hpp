@@ -54,6 +54,8 @@ public:
     [[nodiscard]] bool setEdgeSelected(VertexId first, VertexId second, bool selected);
     [[nodiscard]] bool setFaceSelected(FaceId face, bool selected);
     [[nodiscard]] bool isEdgeSelected(VertexId first, VertexId second) const noexcept;
+    [[nodiscard]] std::optional<Vec3> selectionCenter(SelectionMode mode) const noexcept;
+    [[nodiscard]] bool translateSelected(SelectionMode mode, Vec3 delta) noexcept;
     void clearSelection() noexcept;
     void selectAll(SelectionMode mode);
     void invertSelection(SelectionMode mode);

@@ -34,6 +34,8 @@ a3d::EditableMesh editableMesh = a3d::EditableMesh::cube();
 a3d::MeshHistory meshHistory;
 std::vector<ActionKind> undoActions;
 std::vector<ActionKind> redoActions;
+std::optional<a3d::EditableMesh> transformBefore;
+bool transformChanged = false;
 a3d::ObjectId cubeObjectId = 0;
 a3d::FaceId activeFace = 4;
 a3d::SelectionMode selectionMode = a3d::SelectionMode::Face;
@@ -547,6 +549,45 @@ Java_ai_arena_a3d_NativeRenderer_nativeInvertSelection(JNIEnv*, jobject) {
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeClearSelection(JNIEnv*, jobject) {
     editableMesh.clearSelection();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject) {
+    if (transformBefore || !editableMesh.selectionCenter(selectionMode).has_value()) return JNI_FALSE;
+    transformBefore = editableMesh;
+    transformChanged = false;
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeTranslateSelection(JNIEnv*, jobject, jfloat x, jfloat y, jfloat z) {
+    if (!transformBefore || !editableMesh.translateSelected(selectionMode, {x, y, z})) return JNI_FALSE;
+    transformChanged = true;
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeEndMeshTransform(JNIEnv*, jobject) {
+    if (!transformBefore) return JNI_FALSE;
+    bool committed = false;
+    if (transformChanged) {
+        committed = meshHistory.commit(*transformBefore, editableMesh);
+        if (committed) recordAction(ActionKind::MeshTopology);
+    }
+    transformBefore.reset();
+    transformChanged = false;
+    return committed ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeCancelMeshTransform(JNIEnv*, jobject) {
+    if (transformBefore) {
+        editableMesh = *transformBefore;
+        createCube();
+    }
+    transformBefore.reset();
+    transformChanged = false;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

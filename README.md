@@ -30,6 +30,8 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Core Vertex/Edge/Face selection modes with select-all, clear, invert, counts, and topology-aware edge validation
 - GPU ID picking and orange viewport highlights for vertices, edges, and faces
 - Scrollable Vertex/Edge/Face mode controls plus All/Invert/Clear selection actions
+- Interactive screen-plane Move gesture for selected vertices, edges, or faces
+- Begin/preview/commit/cancel transform transactions producing one undo entry per drag
 - Push/PR automation is verification-only; APK/AAB builds are manually gated until the modeling milestone is approved
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB

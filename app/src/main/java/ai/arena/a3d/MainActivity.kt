@@ -65,6 +65,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectAll() }) { Text("All") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.invertSelection() }) { Text("Invert") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.clearSelection() }) { Text("Clear") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool() }) { Text("Move") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(0, 0.25f) }) { Text("X+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(1, 0.25f) }) { Text("Y+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(2, 0.25f) }) { Text("Z+") }
@@ -104,6 +105,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var downX = 0f
     private var downY = 0f
     private var moved = false
+    private var moveToolActive = false
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -130,6 +132,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 downX = event.x
                 downY = event.y
                 moved = false
+                if (moveToolActive) queueEvent { NativeRenderer.nativeBeginMeshTransform() }
             }
             MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount >= 2) {
                 lastCentroidX = (event.getX(0) + event.getX(1)) * 0.5f
@@ -140,7 +143,11 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 if (event.pointerCount == 1) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
-                    queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
+                    if (moveToolActive) {
+                        queueEvent { NativeRenderer.nativeTranslateSelection(dx * 0.01f, -dy * 0.01f, 0f) }
+                    } else {
+                        queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
+                    }
                     lastX = event.x
                     lastY = event.y
                 } else if (event.pointerCount >= 2) {
@@ -153,16 +160,27 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                     lastCentroidY = cy
                 }
             }
-            MotionEvent.ACTION_UP -> if (!moved) {
-                val x = event.x
-                val y = event.y
-                queueEvent { NativeRenderer.nativePick(x, y) }
+            MotionEvent.ACTION_UP -> {
+                if (moveToolActive) {
+                    queueEvent { NativeRenderer.nativeEndMeshTransform() }
+                } else if (!moved) {
+                    val x = event.x
+                    val y = event.y
+                    queueEvent { NativeRenderer.nativePick(x, y) }
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> if (moveToolActive) {
+                queueEvent { NativeRenderer.nativeCancelMeshTransform() }
             }
         }
         return true
     }
 
-    fun selectionMode(mode: Int) = queueEvent { NativeRenderer.nativeSetSelectionMode(mode) }
+    fun selectionMode(mode: Int) {
+        moveToolActive = false
+        queueEvent { NativeRenderer.nativeSetSelectionMode(mode) }
+    }
+    fun activateMoveTool() { moveToolActive = true }
     fun selectAll() = queueEvent { NativeRenderer.nativeSelectAll() }
     fun invertSelection() = queueEvent { NativeRenderer.nativeInvertSelection() }
     fun clearSelection() = queueEvent { NativeRenderer.nativeClearSelection() }
@@ -201,6 +219,10 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeSelectAll()
     external fun nativeInvertSelection()
     external fun nativeClearSelection()
+    external fun nativeBeginMeshTransform(): Boolean
+    external fun nativeTranslateSelection(x: Float, y: Float, z: Float): Boolean
+    external fun nativeEndMeshTransform(): Boolean
+    external fun nativeCancelMeshTransform()
     external fun nativeNudge(axis: Int, amount: Float): Boolean
     external fun nativeExtrude(distance: Float): Boolean
     external fun nativeInset(amount: Float): Boolean

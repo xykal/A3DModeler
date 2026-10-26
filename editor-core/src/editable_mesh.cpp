@@ -172,6 +172,50 @@ bool EditableMesh::isEdgeSelected(VertexId first, VertexId second) const noexcep
     return selectedEdges_.contains(orderedEdge(first, second));
 }
 
+std::optional<Vec3> EditableMesh::selectionCenter(SelectionMode mode) const noexcept {
+    std::set<VertexId> selected;
+    if (mode == SelectionMode::Vertex) {
+        for (std::size_t i = 0; i < vertices_.size(); ++i)
+            if (vertices_[i].selected) selected.insert(static_cast<VertexId>(i));
+    } else if (mode == SelectionMode::Edge) {
+        for (const auto& [first, second] : selectedEdges_) { selected.insert(first); selected.insert(second); }
+    } else {
+        for (const auto& face : faces_)
+            if (!face.deleted && face.selected) selected.insert(face.vertices.begin(), face.vertices.end());
+    }
+    if (selected.empty()) return std::nullopt;
+    Vec3 center{};
+    for (const VertexId id : selected) {
+        center.x += vertices_[id].position.x;
+        center.y += vertices_[id].position.y;
+        center.z += vertices_[id].position.z;
+    }
+    const float inverse = 1.0F / static_cast<float>(selected.size());
+    center.x *= inverse; center.y *= inverse; center.z *= inverse;
+    return center;
+}
+
+bool EditableMesh::translateSelected(SelectionMode mode, Vec3 delta) noexcept {
+    std::set<VertexId> selected;
+    if (mode == SelectionMode::Vertex) {
+        for (std::size_t i = 0; i < vertices_.size(); ++i)
+            if (vertices_[i].selected) selected.insert(static_cast<VertexId>(i));
+    } else if (mode == SelectionMode::Edge) {
+        for (const auto& [first, second] : selectedEdges_) { selected.insert(first); selected.insert(second); }
+    } else {
+        for (const auto& face : faces_)
+            if (!face.deleted && face.selected) selected.insert(face.vertices.begin(), face.vertices.end());
+    }
+    if (selected.empty()) return false;
+    for (const VertexId id : selected) {
+        vertices_[id].position.x += delta.x;
+        vertices_[id].position.y += delta.y;
+        vertices_[id].position.z += delta.z;
+    }
+    recalculateNormals();
+    return true;
+}
+
 void EditableMesh::clearSelection() noexcept {
     for (auto& vertex : vertices_) vertex.selected = false;
     selectedEdges_.clear();

@@ -107,5 +107,26 @@ int main() {
     assert(selectionMesh.selectedFaceCount() == 6);
     selectionMesh.invertSelection(a3d::SelectionMode::Face);
     assert(selectionMesh.selectedFaceCount() == 0);
+
+    selectionMesh.clearSelection();
+    assert(selectionMesh.setVertexSelected(0, true));
+    const auto vertexCenter = selectionMesh.selectionCenter(a3d::SelectionMode::Vertex);
+    assert(vertexCenter.has_value());
+    const auto oldVertex = selectionMesh.vertices()[0].position;
+    assert(selectionMesh.translateSelected(a3d::SelectionMode::Vertex, {1.0F, 2.0F, 3.0F}));
+    const auto movedVertex = selectionMesh.vertices()[0].position;
+    assert(std::fabs(movedVertex.x - oldVertex.x - 1.0F) < 0.0001F);
+    assert(std::fabs(movedVertex.y - oldVertex.y - 2.0F) < 0.0001F);
+    assert(std::fabs(movedVertex.z - oldVertex.z - 3.0F) < 0.0001F);
+
+    selectionMesh.clearSelection();
+    assert(selectionMesh.setEdgeSelected(0, 1, true));
+    const auto edgeCenter = selectionMesh.selectionCenter(a3d::SelectionMode::Edge);
+    assert(edgeCenter.has_value());
+    assert(selectionMesh.translateSelected(a3d::SelectionMode::Edge, {0.0F, 1.0F, 0.0F}));
+
+    selectionMesh.clearSelection();
+    assert(!selectionMesh.selectionCenter(a3d::SelectionMode::Face).has_value());
+    assert(!selectionMesh.translateSelected(a3d::SelectionMode::Face, {1.0F, 0.0F, 0.0F}));
     return 0;
 }
