@@ -39,6 +39,7 @@ public:
     [[nodiscard]] std::optional<FaceId> addFace(std::vector<VertexId> vertices);
     [[nodiscard]] bool deleteFace(FaceId face);
     [[nodiscard]] std::optional<FaceId> extrudeFace(FaceId face, float distance);
+    [[nodiscard]] std::optional<FaceId> insetFace(FaceId face, float amount);
     [[nodiscard]] bool setFaceSelected(FaceId face, bool selected);
     void clearSelection() noexcept;
     void recalculateNormals() noexcept;

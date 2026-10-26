@@ -405,6 +405,18 @@ Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
+    if (!cubeSelected) return JNI_FALSE;
+    editableMesh.clearSelection();
+    if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
+    const auto result = editableMesh.insetFace(activeFace, amount);
+    if (!result) return JNI_FALSE;
+    activeFace = *result;
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeUndo(JNIEnv*, jobject) {
     return editor.history().undo(editor.scene()) ? JNI_TRUE : JNI_FALSE;
 }

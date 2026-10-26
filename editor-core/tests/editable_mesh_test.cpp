@@ -31,5 +31,17 @@ int main() {
 
     assert(!plane.addFace({0, 0, 1}).has_value());
     assert(!plane.addFace({0, 1, 99}).has_value());
+
+    auto insetPlane = a3d::EditableMesh::plane(4.0F);
+    assert(!insetPlane.insetFace(0, 0.0F).has_value());
+    assert(!insetPlane.insetFace(0, 1.0F).has_value());
+    const auto inset = insetPlane.insetFace(0, 0.25F);
+    assert(inset.has_value());
+    assert(insetPlane.validate());
+    const auto insetStats = insetPlane.stats();
+    assert(insetStats.vertices == 8);
+    assert(insetStats.faces == 5);
+    assert(insetStats.triangles == 10);
+    assert(insetPlane.faces()[*inset].selected);
     return 0;
 }

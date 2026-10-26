@@ -89,6 +89,41 @@ std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     return topFace;
 }
 
+std::optional<FaceId> EditableMesh::insetFace(FaceId faceId, float amount) {
+    if (faceId >= faces_.size() || faces_[faceId].deleted || amount <= 0.0F || amount >= 1.0F)
+        return std::nullopt;
+    const MeshFace source = faces_[faceId];
+    if (source.vertices.size() < 3U) return std::nullopt;
+
+    Vec3 centroid{};
+    for (const VertexId id : source.vertices) {
+        const Vec3 p = vertices_[id].position;
+        centroid.x += p.x; centroid.y += p.y; centroid.z += p.z;
+    }
+    const float inverseCount = 1.0F / static_cast<float>(source.vertices.size());
+    centroid.x *= inverseCount; centroid.y *= inverseCount; centroid.z *= inverseCount;
+
+    std::vector<VertexId> inner;
+    inner.reserve(source.vertices.size());
+    for (const VertexId oldId : source.vertices) {
+        const Vec3 p = vertices_[oldId].position;
+        inner.push_back(addVertex({p.x + (centroid.x - p.x) * amount,
+                                   p.y + (centroid.y - p.y) * amount,
+                                   p.z + (centroid.z - p.z) * amount}));
+    }
+
+    faces_[faceId].deleted = true;
+    faces_[faceId].selected = false;
+    const auto innerFace = addFace(inner);
+    for (std::size_t i = 0; i < source.vertices.size(); ++i) {
+        const std::size_t next = (i + 1U) % source.vertices.size();
+        (void)addFace({source.vertices[i], source.vertices[next], inner[next], inner[i]});
+    }
+    if (innerFace) faces_[*innerFace].selected = true;
+    recalculateNormals();
+    return innerFace;
+}
+
 bool EditableMesh::setFaceSelected(FaceId face, bool selected) {
     if (face >= faces_.size() || faces_[face].deleted) return false;
     faces_[face].selected = selected;
