@@ -176,4 +176,52 @@ bool EditableMesh::validate() const noexcept {
     return true;
 }
 
+MeshHistory::MeshHistory(std::size_t memoryBudgetBytes)
+    : memoryBudgetBytes_(std::max<std::size_t>(memoryBudgetBytes, 1U)) {}
+
+std::size_t MeshHistory::estimateBytes(const EditableMesh& mesh) noexcept {
+    std::size_t bytes = mesh.vertices().size() * sizeof(MeshVertex) +
+                        mesh.faces().size() * sizeof(MeshFace);
+    for (const auto& face : mesh.faces()) bytes += face.vertices.size() * sizeof(VertexId);
+    return bytes;
+}
+
+bool MeshHistory::commit(EditableMesh before, EditableMesh after) {
+    if (!before.validate() || !after.validate()) return false;
+    while (entries_.size() > cursor_) {
+        memoryUsed_ -= entries_.back().bytes;
+        entries_.pop_back();
+    }
+    const std::size_t bytes = estimateBytes(before) + estimateBytes(after);
+    entries_.push_back({std::move(before), std::move(after), bytes});
+    memoryUsed_ += bytes;
+    cursor_ = entries_.size();
+    trimToBudget();
+    return true;
+}
+
+bool MeshHistory::undo(EditableMesh& mesh) {
+    if (!canUndo()) return false;
+    mesh = entries_[--cursor_].before;
+    return true;
+}
+
+bool MeshHistory::redo(EditableMesh& mesh) {
+    if (!canRedo()) return false;
+    mesh = entries_[cursor_++].after;
+    return true;
+}
+
+void MeshHistory::clear() noexcept {
+    entries_.clear(); cursor_ = 0; memoryUsed_ = 0;
+}
+
+void MeshHistory::trimToBudget() {
+    while (memoryUsed_ > memoryBudgetBytes_ && entries_.size() > 1U) {
+        memoryUsed_ -= entries_.front().bytes;
+        entries_.erase(entries_.begin());
+        if (cursor_ > 0U) --cursor_;
+    }
+}
+
 } // namespace a3d

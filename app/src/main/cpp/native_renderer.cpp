@@ -26,8 +26,13 @@ GLuint pickFbo = 0, pickColor = 0, pickDepth = 0;
 GLsizei gridVertexCount = 0, cubeIndexCount = 0, cubeEdgeIndexCount = 0;
 GLint mvpLocation = -1, overrideLocation = -1, overrideColorLocation = -1;
 bool cubeSelected = false;
+enum class ActionKind { ObjectTransform, MeshTopology };
+
 a3d::Editor editor;
 a3d::EditableMesh editableMesh = a3d::EditableMesh::cube();
+a3d::MeshHistory meshHistory;
+std::vector<ActionKind> undoActions;
+std::vector<ActionKind> redoActions;
 a3d::ObjectId cubeObjectId = 0;
 a3d::FaceId activeFace = 4;
 std::vector<FaceDrawRange> faceDrawRanges;
@@ -139,6 +144,27 @@ void createGrid() {
                                      {0,0,-half,0.18f,0.35f,0.85f},{0,0,half,0.18f,0.35f,0.85f}});
     gridVertexCount = static_cast<GLsizei>(vertices.size());
     bindMesh(gridVao, gridVbo, vertices.data(), vertices.size() * sizeof(Vertex));
+}
+
+void recordAction(ActionKind kind) {
+    undoActions.push_back(kind);
+    redoActions.clear();
+}
+
+void syncActiveFace() {
+    for (std::size_t i = 0; i < editableMesh.faces().size(); ++i) {
+        const auto& face = editableMesh.faces()[i];
+        if (!face.deleted && face.selected) {
+            activeFace = static_cast<a3d::FaceId>(i);
+            return;
+        }
+    }
+    for (std::size_t i = 0; i < editableMesh.faces().size(); ++i) {
+        if (!editableMesh.faces()[i].deleted) {
+            activeFace = static_cast<a3d::FaceId>(i);
+            return;
+        }
+    }
 }
 
 void createCube() {
@@ -389,17 +415,22 @@ Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat
     else if (axis == 1) next.position.y += amount;
     else if (axis == 2) next.position.z += amount;
     else return JNI_FALSE;
-    return editor.applyTransform(cubeObjectId, next) ? JNI_TRUE : JNI_FALSE;
+    if (!editor.applyTransform(cubeObjectId, next)) return JNI_FALSE;
+    recordAction(ActionKind::ObjectTransform);
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance) {
     if (!cubeSelected) return JNI_FALSE;
+    const a3d::EditableMesh before = editableMesh;
     editableMesh.clearSelection();
     if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
     const auto result = editableMesh.extrudeFace(activeFace, distance);
     if (!result) return JNI_FALSE;
     activeFace = *result;
+    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
 }
@@ -407,23 +438,44 @@ Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
     if (!cubeSelected) return JNI_FALSE;
+    const a3d::EditableMesh before = editableMesh;
     editableMesh.clearSelection();
     if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
     const auto result = editableMesh.insetFace(activeFace, amount);
     if (!result) return JNI_FALSE;
     activeFace = *result;
+    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeUndo(JNIEnv*, jobject) {
-    return editor.history().undo(editor.scene()) ? JNI_TRUE : JNI_FALSE;
+    if (undoActions.empty()) return JNI_FALSE;
+    const ActionKind kind = undoActions.back();
+    const bool changed = kind == ActionKind::MeshTopology
+        ? meshHistory.undo(editableMesh)
+        : editor.history().undo(editor.scene());
+    if (!changed) return JNI_FALSE;
+    undoActions.pop_back();
+    redoActions.push_back(kind);
+    if (kind == ActionKind::MeshTopology) { syncActiveFace(); createCube(); }
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeRedo(JNIEnv*, jobject) {
-    return editor.history().redo(editor.scene()) ? JNI_TRUE : JNI_FALSE;
+    if (redoActions.empty()) return JNI_FALSE;
+    const ActionKind kind = redoActions.back();
+    const bool changed = kind == ActionKind::MeshTopology
+        ? meshHistory.redo(editableMesh)
+        : editor.history().redo(editor.scene());
+    if (!changed) return JNI_FALSE;
+    redoActions.pop_back();
+    undoActions.push_back(kind);
+    if (kind == ActionKind::MeshTopology) { syncActiveFace(); createCube(); }
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

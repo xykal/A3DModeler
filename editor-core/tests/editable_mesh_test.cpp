@@ -43,5 +43,25 @@ int main() {
     assert(insetStats.faces == 5);
     assert(insetStats.triangles == 10);
     assert(insetPlane.faces()[*inset].selected);
+
+    a3d::MeshHistory history(1024U * 1024U);
+    auto historyMesh = a3d::EditableMesh::cube();
+    const auto beforeExtrude = historyMesh;
+    assert(historyMesh.extrudeFace(4, 0.5F).has_value());
+    assert(history.commit(beforeExtrude, historyMesh));
+    assert(history.canUndo() && !history.canRedo());
+    assert(history.undo(historyMesh));
+    assert(historyMesh.stats().vertices == 8);
+    assert(historyMesh.stats().faces == 6);
+    assert(history.redo(historyMesh));
+    assert(historyMesh.stats().vertices == 12);
+    assert(historyMesh.stats().faces == 10);
+
+    assert(history.undo(historyMesh));
+    const auto beforeInset = historyMesh;
+    assert(historyMesh.insetFace(4, 0.2F).has_value());
+    assert(history.commit(beforeInset, historyMesh));
+    assert(!history.canRedo());
+    assert(history.memoryUsed() > 0U);
     return 0;
 }
