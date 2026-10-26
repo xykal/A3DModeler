@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <string>
 #include <vector>
 
 namespace {
@@ -12,6 +13,7 @@ constexpr float kPi = 3.14159265358979323846f;
 
 struct Mat4 { float m[16]{}; };
 struct Vertex { float x, y, z, r, g, b; };
+struct Vec3 { float x, y, z; };
 
 GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
@@ -20,6 +22,7 @@ GLsizei gridVertexCount = 0;
 GLint mvpLocation = -1;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
+Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
 
 constexpr char kVertexShader[] = R"(#version 300 es
 layout(location = 0) in vec3 aPosition;
@@ -58,7 +61,6 @@ Mat4 perspective(float fovY, float aspect, float nearPlane, float farPlane) {
     return out;
 }
 
-struct Vec3 { float x, y, z; };
 Vec3 subtract(Vec3 a, Vec3 b) { return {a.x-b.x, a.y-b.y, a.z-b.z}; }
 float dot(Vec3 a, Vec3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
 Vec3 cross(Vec3 a, Vec3 b) { return {a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x}; }
@@ -135,7 +137,18 @@ void createCube() {
     glBindVertexArray(0);
 }
 
+void releaseResources() {
+    if (cubeEbo) glDeleteBuffers(1, &cubeEbo);
+    if (cubeVbo) glDeleteBuffers(1, &cubeVbo);
+    if (gridVbo) glDeleteBuffers(1, &gridVbo);
+    if (cubeVao) glDeleteVertexArrays(1, &cubeVao);
+    if (gridVao) glDeleteVertexArrays(1, &gridVao);
+    if (program) glDeleteProgram(program);
+    program = gridVao = gridVbo = cubeVao = cubeVbo = cubeEbo = 0;
+}
+
 void createResources() {
+    releaseResources();
     const GLuint vs = compileShader(GL_VERTEX_SHADER, kVertexShader);
     const GLuint fs = compileShader(GL_FRAGMENT_SHADER, kFragmentShader);
     program = glCreateProgram();
@@ -148,10 +161,10 @@ void createResources() {
 
 Mat4 cameraMvp() {
     const float cp = std::cos(pitch);
-    const Vec3 eye {distanceToTarget * cp * std::sin(yaw),
-                    1.0f + distanceToTarget * std::sin(pitch),
-                    distanceToTarget * cp * std::cos(yaw)};
-    const Mat4 view = lookAt(eye, {0,1,0}, {0,1,0});
+    const Vec3 eye {cameraTarget.x + distanceToTarget * cp * std::sin(yaw),
+                    cameraTarget.y + distanceToTarget * std::sin(pitch),
+                    cameraTarget.z + distanceToTarget * cp * std::cos(yaw)};
+    const Mat4 view = lookAt(eye, cameraTarget, {0,1,0});
     const Mat4 projection = perspective(50.0f * kPi / 180.0f,
         static_cast<float>(viewportWidth) / static_cast<float>(std::max(1, viewportHeight)), 0.05f, 100.0f);
     return multiply(projection, view);
@@ -193,4 +206,28 @@ Java_ai_arena_a3d_NativeRenderer_nativeOrbit(JNIEnv*, jobject, jfloat dx, jfloat
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeZoom(JNIEnv*, jobject, jfloat scale) {
     if (scale > 0.0f) distanceToTarget = std::clamp(distanceToTarget / scale, 2.5f, 25.0f);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativePan(JNIEnv*, jobject, jfloat dx, jfloat dy) {
+    const float scale = distanceToTarget * 0.0015f;
+    const Vec3 right {std::cos(yaw), 0.0f, -std::sin(yaw)};
+    const Vec3 forward {-std::sin(yaw), 0.0f, -std::cos(yaw)};
+    cameraTarget.x += (-dx * right.x + dy * forward.x) * scale;
+    cameraTarget.z += (-dx * right.z + dy * forward.z) * scale;
+    cameraTarget.y += dy * scale * 0.35f;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeCapabilities(JNIEnv* env, jobject) {
+    const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    std::string result = std::string(renderer ? renderer : "Unknown GPU") + " | " +
+                         (version ? version : "Unknown OpenGL ES");
+    return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeRelease(JNIEnv*, jobject) {
+    releaseResources();
 }

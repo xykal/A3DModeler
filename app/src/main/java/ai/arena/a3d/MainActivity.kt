@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import androidx.activity.ComponentActivity
@@ -79,6 +80,8 @@ private fun NativeViewport(modifier: Modifier = Modifier) {
 private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var lastX = 0f
     private var lastY = 0f
+    private var lastCentroidX = 0f
+    private var lastCentroidY = 0f
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -103,17 +106,34 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 lastX = event.x
                 lastY = event.y
             }
+            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount >= 2) {
+                lastCentroidX = (event.getX(0) + event.getX(1)) * 0.5f
+                lastCentroidY = (event.getY(0) + event.getY(1)) * 0.5f
+            }
             MotionEvent.ACTION_MOVE -> {
-                if (!scaleDetector.isInProgress && event.pointerCount == 1) {
+                if (event.pointerCount == 1) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
                     queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
+                    lastX = event.x
+                    lastY = event.y
+                } else if (event.pointerCount >= 2) {
+                    val cx = (event.getX(0) + event.getX(1)) * 0.5f
+                    val cy = (event.getY(0) + event.getY(1)) * 0.5f
+                    val dx = cx - lastCentroidX
+                    val dy = cy - lastCentroidY
+                    queueEvent { NativeRenderer.nativePan(dx, dy) }
+                    lastCentroidX = cx
+                    lastCentroidY = cy
                 }
-                lastX = event.x
-                lastY = event.y
             }
         }
         return true
+    }
+
+    override fun onDetachedFromWindow() {
+        queueEvent { NativeRenderer.nativeRelease() }
+        super.onDetachedFromWindow()
     }
 }
 
@@ -131,8 +151,14 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeDrawFrame()
     external fun nativeOrbit(dx: Float, dy: Float)
     external fun nativeZoom(scale: Float)
+    external fun nativePan(dx: Float, dy: Float)
+    external fun nativeCapabilities(): String
+    external fun nativeRelease()
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeSurfaceCreated()
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        nativeSurfaceCreated()
+        Log.i("A3D", nativeCapabilities())
+    }
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeSurfaceChanged(width, height)
     override fun onDrawFrame(gl: GL10?) = nativeDrawFrame()
 }
