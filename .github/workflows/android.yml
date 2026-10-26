@@ -1,0 +1,29 @@
+name: Android CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build dual-ABI debug APK
+        run: gradle :app:assembleDebug --stacktrace
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a3d-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
