@@ -133,7 +133,12 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                 downX = event.x
                 downY = event.y
                 moved = false
-                if (moveToolActive) queueEvent { NativeRenderer.nativeBeginMeshTransform() }
+                if (moveToolActive) {
+                    val x = event.x
+                    val y = event.y
+                    val axis = moveAxis
+                    queueEvent { NativeRenderer.nativeBeginMeshTransform(x, y, axis) }
+                }
             }
             MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount >= 2) {
                 lastCentroidX = (event.getX(0) + event.getX(1)) * 0.5f
@@ -145,11 +150,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
                     if (moveToolActive) {
-                        val amount = if (moveAxis == 1) -dy * 0.01f else dx * 0.01f
-                        val tx = if (moveAxis == -1 || moveAxis == 0) amount else 0f
-                        val ty = if (moveAxis == 1) amount else if (moveAxis == -1) -dy * 0.01f else 0f
-                        val tz = if (moveAxis == 2) amount else 0f
-                        queueEvent { NativeRenderer.nativeTranslateSelection(tx, ty, tz) }
+                        queueEvent { NativeRenderer.nativeDragMeshTransform(dx, dy) }
                     } else {
                         queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
                     }
@@ -228,8 +229,9 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeSelectAll()
     external fun nativeInvertSelection()
     external fun nativeClearSelection()
-    external fun nativeBeginMeshTransform(): Boolean
+    external fun nativeBeginMeshTransform(x: Float, y: Float, preferredAxis: Int): Boolean
     external fun nativeTranslateSelection(x: Float, y: Float, z: Float): Boolean
+    external fun nativeDragMeshTransform(dx: Float, dy: Float): Boolean
     external fun nativeEndMeshTransform(): Boolean
     external fun nativeCancelMeshTransform()
     external fun nativeNudge(axis: Int, amount: Float): Boolean

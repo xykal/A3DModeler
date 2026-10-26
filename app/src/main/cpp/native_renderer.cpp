@@ -37,6 +37,7 @@ std::vector<ActionKind> undoActions;
 std::vector<ActionKind> redoActions;
 std::optional<a3d::EditableMesh> transformBefore;
 bool transformChanged = false;
+int transformAxis = -1;
 a3d::ObjectId cubeObjectId = 0;
 a3d::FaceId activeFace = 4;
 a3d::SelectionMode selectionMode = a3d::SelectionMode::Face;
@@ -307,6 +308,43 @@ Mat4 cameraMvp() {
         static_cast<float>(viewportWidth) / static_cast<float>(std::max(1, viewportHeight)), 0.05f, 100.0f);
     return multiply(projection, view);
 }
+
+std::optional<Vec3> projectToScreen(Vec3 point) {
+    const Mat4 mvp = cameraMvp();
+    const float clipX = mvp.m[0]*point.x + mvp.m[4]*point.y + mvp.m[8]*point.z + mvp.m[12];
+    const float clipY = mvp.m[1]*point.x + mvp.m[5]*point.y + mvp.m[9]*point.z + mvp.m[13];
+    const float clipW = mvp.m[3]*point.x + mvp.m[7]*point.y + mvp.m[11]*point.z + mvp.m[15];
+    if (clipW <= 0.0001f) return std::nullopt;
+    return Vec3{(clipX/clipW*0.5f+0.5f)*viewportWidth,
+                (1.0f-(clipY/clipW*0.5f+0.5f))*viewportHeight, 0.0f};
+}
+
+float pointSegmentDistance(float px, float py, Vec3 a, Vec3 b) {
+    const float dx=b.x-a.x, dy=b.y-a.y;
+    const float length2=dx*dx+dy*dy;
+    const float t=length2 > 0.0001f ? std::clamp(((px-a.x)*dx+(py-a.y)*dy)/length2,0.0f,1.0f) : 0.0f;
+    const float ex=px-(a.x+t*dx), ey=py-(a.y+t*dy);
+    return std::sqrt(ex*ex+ey*ey);
+}
+
+int pickGizmoAxis(float x, float y) {
+    const auto center = editableMesh.selectionCenter(selectionMode);
+    if (!center) return -1;
+    a3d::Vec3 objectPosition{};
+    if (const auto* object = editor.scene().find(cubeObjectId)) objectPosition = object->transform.position;
+    const Vec3 origin{objectPosition.x+center->x, objectPosition.y+center->y+1.0f, objectPosition.z+center->z};
+    const auto screenOrigin=projectToScreen(origin);
+    if (!screenOrigin) return -1;
+    constexpr Vec3 axes[]={{1.5f,0,0},{0,1.5f,0},{0,0,1.5f}};
+    int best=-1; float bestDistance=32.0f;
+    for (int axis=0; axis<3; ++axis) {
+        const auto endpoint=projectToScreen({origin.x+axes[axis].x,origin.y+axes[axis].y,origin.z+axes[axis].z});
+        if (!endpoint) continue;
+        const float distance=pointSegmentDistance(x,y,*screenOrigin,*endpoint);
+        if (distance<bestDistance) { bestDistance=distance; best=axis; }
+    }
+    return best;
+}
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -574,8 +612,9 @@ Java_ai_arena_a3d_NativeRenderer_nativeClearSelection(JNIEnv*, jobject) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject) {
+Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject, jfloat x, jfloat y, jint preferredAxis) {
     if (transformBefore || !editableMesh.selectionCenter(selectionMode).has_value()) return JNI_FALSE;
+    transformAxis = preferredAxis >= 0 && preferredAxis <= 2 ? preferredAxis : pickGizmoAxis(x, y);
     transformBefore = editableMesh;
     transformChanged = false;
     return JNI_TRUE;
@@ -584,6 +623,20 @@ Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeTranslateSelection(JNIEnv*, jobject, jfloat x, jfloat y, jfloat z) {
     if (!transformBefore || !editableMesh.translateSelected(selectionMode, {x, y, z})) return JNI_FALSE;
+    transformChanged = true;
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDragMeshTransform(JNIEnv*, jobject, jfloat dx, jfloat dy) {
+    const float horizontal = dx * 0.01f;
+    const float vertical = -dy * 0.01f;
+    const Vec3 delta = transformAxis == 0 ? Vec3{horizontal,0,0}
+                     : transformAxis == 1 ? Vec3{0,vertical,0}
+                     : transformAxis == 2 ? Vec3{0,0,horizontal}
+                                          : Vec3{horizontal,vertical,0};
+    if (!transformBefore || !editableMesh.translateSelected(selectionMode, {delta.x,delta.y,delta.z})) return JNI_FALSE;
     transformChanged = true;
     createCube();
     return JNI_TRUE;
@@ -599,6 +652,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeEndMeshTransform(JNIEnv*, jobject) {
     }
     transformBefore.reset();
     transformChanged = false;
+    transformAxis = -1;
     return committed ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -610,6 +664,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeCancelMeshTransform(JNIEnv*, jobject) {
     }
     transformBefore.reset();
     transformChanged = false;
+    transformAxis = -1;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
