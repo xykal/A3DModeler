@@ -19,13 +19,70 @@ bool Transform::nearlyEquals(const Transform& other, float epsilon) const noexce
            scale.nearlyEquals(other.scale, epsilon);
 }
 
-ObjectId Scene::createObject() {
+ObjectId Scene::createObject(PrimitiveType primitive, std::string_view requestedName) {
     const ObjectId id = nextId_++;
-    objects_.emplace(id, SceneObject{id, {}});
+    std::string base = requestedName.empty() ? "Object" : std::string(requestedName);
+    std::string unique = base;
+    int suffix = 1;
+    const auto nameExists = [this](const std::string& candidate) {
+        return std::any_of(objects_.begin(), objects_.end(), [&](const auto& pair) {
+            return pair.second.name == candidate;
+        });
+    };
+    while (nameExists(unique)) unique = base + "." + std::to_string(suffix++);
+    objects_.emplace(id, SceneObject{id, std::move(unique), primitive, {}, true, false});
     return id;
 }
 
+std::optional<ObjectId> Scene::duplicateObject(ObjectId sourceId) {
+    const auto* source = find(sourceId);
+    if (!source) return std::nullopt;
+    const SceneObject snapshot = *source;
+    const ObjectId copyId = createObject(snapshot.primitive, snapshot.name);
+    auto* copy = find(copyId);
+    copy->transform = snapshot.transform;
+    copy->visible = snapshot.visible;
+    copy->locked = false;
+    return copyId;
+}
+
 bool Scene::removeObject(ObjectId id) { return objects_.erase(id) != 0; }
+
+bool Scene::renameObject(ObjectId id, std::string_view name) {
+    auto* object = find(id);
+    if (!object || name.empty()) return false;
+    const bool duplicate = std::any_of(objects_.begin(), objects_.end(), [&](const auto& pair) {
+        return pair.first != id && pair.second.name == name;
+    });
+    if (duplicate) return false;
+    object->name = name;
+    return true;
+}
+
+bool Scene::setVisible(ObjectId id, bool visible) {
+    auto* object = find(id);
+    if (!object) return false;
+    object->visible = visible;
+    return true;
+}
+
+bool Scene::setLocked(ObjectId id, bool locked) {
+    auto* object = find(id);
+    if (!object) return false;
+    object->locked = locked;
+    return true;
+}
+
+std::vector<ObjectId> Scene::objectIds() const {
+    std::vector<ObjectId> ids;
+    ids.reserve(objects_.size());
+    for (const auto& [id, object] : objects_) {
+        (void)object;
+        ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    return ids;
+}
 
 SceneObject* Scene::find(ObjectId id) noexcept {
     const auto found = objects_.find(id);
@@ -96,7 +153,7 @@ void Editor::select(std::optional<ObjectId> id) noexcept {
 
 bool Editor::applyTransform(ObjectId id, const Transform& transform) {
     const auto* object = scene_.find(id);
-    if (!object || object->transform.nearlyEquals(transform)) return false;
+    if (!object || object->locked || object->transform.nearlyEquals(transform)) return false;
     history_.execute(std::make_unique<TransformCommand>(id, object->transform, transform), scene_);
     return true;
 }

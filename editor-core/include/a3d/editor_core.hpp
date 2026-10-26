@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -27,17 +29,35 @@ struct Transform final {
     [[nodiscard]] bool nearlyEquals(const Transform& other, float epsilon = 0.0001F) const noexcept;
 };
 
+enum class PrimitiveType : std::uint8_t {
+    Cube,
+    Plane,
+    UVSphere,
+    Cylinder,
+    Cone
+};
+
 struct SceneObject final {
     ObjectId id{};
+    std::string name{"Object"};
+    PrimitiveType primitive{PrimitiveType::Cube};
     Transform transform{};
+    bool visible{true};
+    bool locked{false};
 };
 
 class Scene final {
 public:
-    [[nodiscard]] ObjectId createObject();
+    [[nodiscard]] ObjectId createObject(PrimitiveType primitive = PrimitiveType::Cube,
+                                        std::string_view requestedName = {});
+    [[nodiscard]] std::optional<ObjectId> duplicateObject(ObjectId sourceId);
     [[nodiscard]] bool removeObject(ObjectId id);
+    [[nodiscard]] bool renameObject(ObjectId id, std::string_view name);
+    [[nodiscard]] bool setVisible(ObjectId id, bool visible);
+    [[nodiscard]] bool setLocked(ObjectId id, bool locked);
     [[nodiscard]] SceneObject* find(ObjectId id) noexcept;
     [[nodiscard]] const SceneObject* find(ObjectId id) const noexcept;
+    [[nodiscard]] std::vector<ObjectId> objectIds() const;
     [[nodiscard]] std::size_t size() const noexcept { return objects_.size(); }
 
 private:
