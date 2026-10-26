@@ -4,6 +4,8 @@ import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -69,15 +71,50 @@ private fun NativeViewport(modifier: Modifier = Modifier) {
         modifier = modifier,
         factory = { context ->
             checkOpenGles31(context)
-            GLSurfaceView(context).apply {
-                setEGLContextClientVersion(3)
-                setEGLConfigChooser(8, 8, 8, 8, 24, 8)
-                setRenderer(NativeRenderer)
-                renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-                preserveEGLContextOnPause = true
-            }
+            EditorGLSurfaceView(context)
         }
     )
+}
+
+private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
+    private var lastX = 0f
+    private var lastY = 0f
+    private val scaleDetector = ScaleGestureDetector(context,
+        object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scale = detector.scaleFactor
+                queueEvent { NativeRenderer.nativeZoom(scale) }
+                return true
+            }
+        })
+
+    init {
+        setEGLContextClientVersion(3)
+        setEGLConfigChooser(8, 8, 8, 8, 24, 8)
+        setRenderer(NativeRenderer)
+        renderMode = RENDERMODE_CONTINUOUSLY
+        preserveEGLContextOnPause = true
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        scaleDetector.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastX = event.x
+                lastY = event.y
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!scaleDetector.isInProgress && event.pointerCount == 1) {
+                    val dx = event.x - lastX
+                    val dy = event.y - lastY
+                    queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
+                }
+                lastX = event.x
+                lastY = event.y
+            }
+        }
+        return true
+    }
 }
 
 private fun checkOpenGles31(context: Context) {
@@ -91,12 +128,11 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     init { System.loadLibrary("a3d_core") }
     external fun nativeSurfaceCreated()
     external fun nativeSurfaceChanged(width: Int, height: Int)
-    external fun nativeDrawFrame(timeSeconds: Float)
-    private val startedAt = System.nanoTime()
+    external fun nativeDrawFrame()
+    external fun nativeOrbit(dx: Float, dy: Float)
+    external fun nativeZoom(scale: Float)
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeSurfaceCreated()
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeSurfaceChanged(width, height)
-    override fun onDrawFrame(gl: GL10?) {
-        nativeDrawFrame((System.nanoTime() - startedAt) / 1_000_000_000f)
-    }
+    override fun onDrawFrame(gl: GL10?) = nativeDrawFrame()
 }

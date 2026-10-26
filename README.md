@@ -5,8 +5,9 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 ## Current state
 
 - Adaptive Compose editor shell
-- Native C++ renderer with a rotating test triangle
-- OpenGL ES 3.1 compatibility baseline
+- Native C++ OpenGL ES 3.1 renderer
+- Perspective camera, world grid, colored axes, and indexed cube
+- One-finger orbit and pinch-to-zoom navigation
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Android 10 (API 29) minimum
 
@@ -22,4 +23,4 @@ Open the folder in Android Studio and run the `app` configuration, or generate/u
 
 ## Next milestone
 
-Replace the test triangle with camera math, a grid, and an indexed cube; add renderer capability detection and unit-testable editor-core modules.
+Add two-finger pan, renderer capability detection, lifecycle-safe native resource cleanup, and unit-testable editor-core modules.
