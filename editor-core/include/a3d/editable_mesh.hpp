@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <set>
+#include <utility>
 #include <vector>
 
 namespace a3d {
@@ -12,8 +14,15 @@ namespace a3d {
 using VertexId = std::uint32_t;
 using FaceId = std::uint32_t;
 
+enum class SelectionMode : std::uint8_t {
+    Vertex,
+    Edge,
+    Face
+};
+
 struct MeshVertex final {
     Vec3 position{};
+    bool selected{false};
 };
 
 struct MeshFace final {
@@ -41,18 +50,31 @@ public:
     [[nodiscard]] bool flipFace(FaceId face);
     [[nodiscard]] std::optional<FaceId> extrudeFace(FaceId face, float distance);
     [[nodiscard]] std::optional<FaceId> insetFace(FaceId face, float amount);
+    [[nodiscard]] bool setVertexSelected(VertexId vertex, bool selected);
+    [[nodiscard]] bool setEdgeSelected(VertexId first, VertexId second, bool selected);
     [[nodiscard]] bool setFaceSelected(FaceId face, bool selected);
+    [[nodiscard]] bool isEdgeSelected(VertexId first, VertexId second) const noexcept;
     void clearSelection() noexcept;
+    void selectAll(SelectionMode mode);
+    void invertSelection(SelectionMode mode);
     void recalculateNormals() noexcept;
 
+    [[nodiscard]] std::size_t selectedVertexCount() const noexcept;
+    [[nodiscard]] std::size_t selectedEdgeCount() const noexcept { return selectedEdges_.size(); }
+    [[nodiscard]] std::size_t selectedFaceCount() const noexcept;
     [[nodiscard]] const std::vector<MeshVertex>& vertices() const noexcept { return vertices_; }
     [[nodiscard]] const std::vector<MeshFace>& faces() const noexcept { return faces_; }
+    [[nodiscard]] const std::set<std::pair<VertexId, VertexId>>& selectedEdges() const noexcept { return selectedEdges_; }
     [[nodiscard]] MeshStats stats() const;
     [[nodiscard]] bool validate() const noexcept;
 
 private:
+    [[nodiscard]] std::set<std::pair<VertexId, VertexId>> topologyEdges() const;
+    [[nodiscard]] static std::pair<VertexId, VertexId> orderedEdge(VertexId first, VertexId second) noexcept;
+
     std::vector<MeshVertex> vertices_{};
     std::vector<MeshFace> faces_{};
+    std::set<std::pair<VertexId, VertexId>> selectedEdges_{};
 };
 
 class MeshHistory final {

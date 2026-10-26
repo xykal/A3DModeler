@@ -61,6 +61,7 @@ bool EditableMesh::deleteFace(FaceId face) {
     if (face >= faces_.size() || faces_[face].deleted) return false;
     faces_[face].deleted = true;
     faces_[face].selected = false;
+    selectedEdges_.clear();
     return true;
 }
 
@@ -73,6 +74,7 @@ bool EditableMesh::flipFace(FaceId face) {
 
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     if (faceId >= faces_.size() || faces_[faceId].deleted) return std::nullopt;
+    selectedEdges_.clear();
     const MeshFace source = faces_[faceId];
     if (source.vertices.size() < 3U) return std::nullopt;
 
@@ -99,6 +101,7 @@ std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
 std::optional<FaceId> EditableMesh::insetFace(FaceId faceId, float amount) {
     if (faceId >= faces_.size() || faces_[faceId].deleted || amount <= 0.0F || amount >= 1.0F)
         return std::nullopt;
+    selectedEdges_.clear();
     const MeshFace source = faces_[faceId];
     if (source.vertices.size() < 3U) return std::nullopt;
 
@@ -131,14 +134,81 @@ std::optional<FaceId> EditableMesh::insetFace(FaceId faceId, float amount) {
     return innerFace;
 }
 
+std::pair<VertexId, VertexId> EditableMesh::orderedEdge(VertexId first, VertexId second) noexcept {
+    return first < second ? std::pair{first, second} : std::pair{second, first};
+}
+
+std::set<std::pair<VertexId, VertexId>> EditableMesh::topologyEdges() const {
+    std::set<std::pair<VertexId, VertexId>> edges;
+    for (const auto& face : faces_) {
+        if (face.deleted) continue;
+        for (std::size_t i = 0; i < face.vertices.size(); ++i)
+            edges.insert(orderedEdge(face.vertices[i], face.vertices[(i + 1U) % face.vertices.size()]));
+    }
+    return edges;
+}
+
+bool EditableMesh::setVertexSelected(VertexId vertex, bool selected) {
+    if (vertex >= vertices_.size()) return false;
+    vertices_[vertex].selected = selected;
+    return true;
+}
+
+bool EditableMesh::setEdgeSelected(VertexId first, VertexId second, bool selected) {
+    if (first == second || first >= vertices_.size() || second >= vertices_.size()) return false;
+    const auto edge = orderedEdge(first, second);
+    if (!topologyEdges().contains(edge)) return false;
+    if (selected) selectedEdges_.insert(edge); else selectedEdges_.erase(edge);
+    return true;
+}
+
 bool EditableMesh::setFaceSelected(FaceId face, bool selected) {
     if (face >= faces_.size() || faces_[face].deleted) return false;
     faces_[face].selected = selected;
     return true;
 }
 
+bool EditableMesh::isEdgeSelected(VertexId first, VertexId second) const noexcept {
+    return selectedEdges_.contains(orderedEdge(first, second));
+}
+
 void EditableMesh::clearSelection() noexcept {
+    for (auto& vertex : vertices_) vertex.selected = false;
+    selectedEdges_.clear();
     for (auto& face : faces_) face.selected = false;
+}
+
+void EditableMesh::selectAll(SelectionMode mode) {
+    if (mode == SelectionMode::Vertex) {
+        for (auto& vertex : vertices_) vertex.selected = true;
+    } else if (mode == SelectionMode::Edge) {
+        selectedEdges_ = topologyEdges();
+    } else {
+        for (auto& face : faces_) if (!face.deleted) face.selected = true;
+    }
+}
+
+void EditableMesh::invertSelection(SelectionMode mode) {
+    if (mode == SelectionMode::Vertex) {
+        for (auto& vertex : vertices_) vertex.selected = !vertex.selected;
+    } else if (mode == SelectionMode::Edge) {
+        const auto edges = topologyEdges();
+        std::set<std::pair<VertexId, VertexId>> inverted;
+        for (const auto& edge : edges) if (!selectedEdges_.contains(edge)) inverted.insert(edge);
+        selectedEdges_ = std::move(inverted);
+    } else {
+        for (auto& face : faces_) if (!face.deleted) face.selected = !face.selected;
+    }
+}
+
+std::size_t EditableMesh::selectedVertexCount() const noexcept {
+    return static_cast<std::size_t>(std::count_if(vertices_.begin(), vertices_.end(),
+        [](const MeshVertex& vertex) { return vertex.selected; }));
+}
+
+std::size_t EditableMesh::selectedFaceCount() const noexcept {
+    return static_cast<std::size_t>(std::count_if(faces_.begin(), faces_.end(),
+        [](const MeshFace& face) { return !face.deleted && face.selected; }));
 }
 
 void EditableMesh::recalculateNormals() noexcept {
@@ -190,6 +260,7 @@ std::size_t MeshHistory::estimateBytes(const EditableMesh& mesh) noexcept {
     std::size_t bytes = mesh.vertices().size() * sizeof(MeshVertex) +
                         mesh.faces().size() * sizeof(MeshFace);
     for (const auto& face : mesh.faces()) bytes += face.vertices.size() * sizeof(VertexId);
+    bytes += mesh.selectedEdges().size() * sizeof(std::pair<VertexId, VertexId>);
     return bytes;
 }
 

@@ -27,6 +27,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Unified action ordering across object transforms and mesh operations
 - Face delete and normal-flip operations with topology history
 - Horizontally scrollable modeling tool shelf for phone layouts
+- Core Vertex/Edge/Face selection modes with select-all, clear, invert, counts, and topology-aware edge validation
 - Push/PR automation is verification-only; APK/AAB builds are manually gated until the modeling milestone is approved
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB

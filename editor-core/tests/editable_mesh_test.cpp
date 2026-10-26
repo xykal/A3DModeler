@@ -79,5 +79,33 @@ int main() {
     assert(normalMesh.stats().faces == 0);
     assert(history.undo(normalMesh));
     assert(normalMesh.stats().faces == 1);
+
+    auto selectionMesh = a3d::EditableMesh::cube();
+    assert(selectionMesh.setVertexSelected(0, true));
+    assert(!selectionMesh.setVertexSelected(99, true));
+    assert(selectionMesh.selectedVertexCount() == 1);
+    assert(selectionMesh.setEdgeSelected(0, 1, true));
+    assert(selectionMesh.isEdgeSelected(1, 0));
+    assert(!selectionMesh.setEdgeSelected(0, 6, true));
+    assert(selectionMesh.selectedEdgeCount() == 1);
+    assert(selectionMesh.setFaceSelected(0, true));
+    assert(selectionMesh.selectedFaceCount() == 1);
+
+    selectionMesh.clearSelection();
+    assert(selectionMesh.selectedVertexCount() == 0);
+    assert(selectionMesh.selectedEdgeCount() == 0);
+    assert(selectionMesh.selectedFaceCount() == 0);
+    selectionMesh.selectAll(a3d::SelectionMode::Vertex);
+    assert(selectionMesh.selectedVertexCount() == 8);
+    selectionMesh.invertSelection(a3d::SelectionMode::Vertex);
+    assert(selectionMesh.selectedVertexCount() == 0);
+    selectionMesh.selectAll(a3d::SelectionMode::Edge);
+    assert(selectionMesh.selectedEdgeCount() == 12);
+    selectionMesh.invertSelection(a3d::SelectionMode::Edge);
+    assert(selectionMesh.selectedEdgeCount() == 0);
+    selectionMesh.selectAll(a3d::SelectionMode::Face);
+    assert(selectionMesh.selectedFaceCount() == 6);
+    selectionMesh.invertSelection(a3d::SelectionMode::Face);
+    assert(selectionMesh.selectedFaceCount() == 0);
     return 0;
 }
