@@ -22,6 +22,7 @@ struct EdgeDrawRange { a3d::VertexId first; a3d::VertexId second; GLsizei firstI
 
 GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
+GLuint gizmoVao = 0, gizmoVbo = 0;
 GLuint cubeVao = 0, cubeVbo = 0, cubeEbo = 0, cubeEdgeEbo = 0;
 GLuint pickFbo = 0, pickColor = 0, pickDepth = 0;
 GLsizei gridVertexCount = 0, cubeIndexCount = 0, cubeEdgeIndexCount = 0;
@@ -152,6 +153,15 @@ void createGrid() {
     bindMesh(gridVao, gridVbo, vertices.data(), vertices.size() * sizeof(Vertex));
 }
 
+void createGizmo() {
+    constexpr Vertex axes[] = {
+        {0,0,0,1.0f,0.15f,0.12f},{1.5f,0,0,1.0f,0.15f,0.12f},
+        {0,0,0,0.20f,0.95f,0.30f},{0,1.5f,0,0.20f,0.95f,0.30f},
+        {0,0,0,0.20f,0.45f,1.0f},{0,0,1.5f,0.20f,0.45f,1.0f}
+    };
+    bindMesh(gizmoVao, gizmoVbo, axes, sizeof(axes));
+}
+
 void recordAction(ActionKind kind) {
     undoActions.push_back(kind);
     redoActions.clear();
@@ -262,11 +272,13 @@ void releaseResources() {
     if (cubeEdgeEbo) glDeleteBuffers(1, &cubeEdgeEbo);
     if (cubeEbo) glDeleteBuffers(1, &cubeEbo);
     if (cubeVbo) glDeleteBuffers(1, &cubeVbo);
+    if (gizmoVbo) glDeleteBuffers(1, &gizmoVbo);
     if (gridVbo) glDeleteBuffers(1, &gridVbo);
     if (cubeVao) glDeleteVertexArrays(1, &cubeVao);
+    if (gizmoVao) glDeleteVertexArrays(1, &gizmoVao);
     if (gridVao) glDeleteVertexArrays(1, &gridVao);
     if (program) glDeleteProgram(program);
-    program = gridVao = gridVbo = cubeVao = cubeVbo = cubeEbo = cubeEdgeEbo = 0;
+    program = gridVao = gridVbo = gizmoVao = gizmoVbo = cubeVao = cubeVbo = cubeEbo = cubeEdgeEbo = 0;
     pickFbo = pickColor = pickDepth = 0;
 }
 
@@ -281,6 +293,7 @@ void createResources() {
     overrideLocation = glGetUniformLocation(program, "uOverride");
     overrideColorLocation = glGetUniformLocation(program, "uOverrideColor");
     createGrid();
+    createGizmo();
     createCube();
 }
 
@@ -361,6 +374,15 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
         glDrawElements(GL_LINES, cubeEdgeIndexCount, GL_UNSIGNED_SHORT, nullptr);
         glUniform1i(overrideLocation, GL_FALSE);
         glEnable(GL_CULL_FACE);
+
+        if (const auto center = editableMesh.selectionCenter(selectionMode)) {
+            const Mat4 gizmoMvp = multiply(viewProjection,
+                translation(position.x + center->x, position.y + center->y + 1.0f, position.z + center->z));
+            glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, gizmoMvp.m);
+            glBindVertexArray(gizmoVao);
+            glLineWidth(5.0f);
+            glDrawArrays(GL_LINES, 0, 6);
+        }
     }
 }
 

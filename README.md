@@ -32,6 +32,8 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Scrollable Vertex/Edge/Face mode controls plus All/Invert/Clear selection actions
 - Interactive screen-plane Move gesture for selected vertices, edges, or faces
 - Begin/preview/commit/cancel transform transactions producing one undo entry per drag
+- Viewport Move gizmo rendered at selection center with red X, green Y, and blue Z axes
+- Free screen-plane movement plus constrained Move X/Y/Z drag modes
 - Push/PR automation is verification-only; APK/AAB builds are manually gated until the modeling milestone is approved
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB

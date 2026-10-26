@@ -65,10 +65,10 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectAll() }) { Text("All") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.invertSelection() }) { Text("Invert") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.clearSelection() }) { Text("Clear") }
-                TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool() }) { Text("Move") }
-                TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(0, 0.25f) }) { Text("X+") }
-                TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(1, 0.25f) }) { Text("Y+") }
-                TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(2, 0.25f) }) { Text("Z+") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(-1) }) { Text("Move") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(0) }) { Text("Move X") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(1) }) { Text("Move Y") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(2) }) { Text("Move Z") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.flipFace() }) { Text("Flip") }
@@ -106,6 +106,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var downY = 0f
     private var moved = false
     private var moveToolActive = false
+    private var moveAxis = -1
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -144,7 +145,11 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
                     if (moveToolActive) {
-                        queueEvent { NativeRenderer.nativeTranslateSelection(dx * 0.01f, -dy * 0.01f, 0f) }
+                        val amount = if (moveAxis == 1) -dy * 0.01f else dx * 0.01f
+                        val tx = if (moveAxis == -1 || moveAxis == 0) amount else 0f
+                        val ty = if (moveAxis == 1) amount else if (moveAxis == -1) -dy * 0.01f else 0f
+                        val tz = if (moveAxis == 2) amount else 0f
+                        queueEvent { NativeRenderer.nativeTranslateSelection(tx, ty, tz) }
                     } else {
                         queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
                     }
@@ -178,9 +183,13 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
     fun selectionMode(mode: Int) {
         moveToolActive = false
+        moveAxis = -1
         queueEvent { NativeRenderer.nativeSetSelectionMode(mode) }
     }
-    fun activateMoveTool() { moveToolActive = true }
+    fun activateMoveTool(axis: Int) {
+        moveToolActive = true
+        moveAxis = axis
+    }
     fun selectAll() = queueEvent { NativeRenderer.nativeSelectAll() }
     fun invertSelection() = queueEvent { NativeRenderer.nativeInvertSelection() }
     fun clearSelection() = queueEvent { NativeRenderer.nativeClearSelection() }
