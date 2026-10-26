@@ -2,8 +2,10 @@
 #include <GLES3/gl31.h>
 #include <android/log.h>
 #include "a3d/editor_core.hpp"
+#include "a3d/editable_mesh.hpp"
 #include <algorithm>
 #include <array>
+#include <set>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -20,11 +22,13 @@ GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
 GLuint cubeVao = 0, cubeVbo = 0, cubeEbo = 0, cubeEdgeEbo = 0;
 GLuint pickFbo = 0, pickColor = 0, pickDepth = 0;
-GLsizei gridVertexCount = 0;
+GLsizei gridVertexCount = 0, cubeIndexCount = 0, cubeEdgeIndexCount = 0;
 GLint mvpLocation = -1, overrideLocation = -1, overrideColorLocation = -1;
 bool cubeSelected = false;
 a3d::Editor editor;
+a3d::EditableMesh editableMesh = a3d::EditableMesh::cube();
 a3d::ObjectId cubeObjectId = 0;
+a3d::FaceId activeFace = 4;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
 Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
@@ -136,25 +140,52 @@ void createGrid() {
 }
 
 void createCube() {
-    constexpr Vertex vertices[] = {
-        {-1,0,-1,0.38f,0.58f,1.0f},{1,0,-1,0.38f,0.58f,1.0f},{1,2,-1,0.50f,0.70f,1.0f},{-1,2,-1,0.50f,0.70f,1.0f},
-        {-1,0, 1,0.28f,0.48f,0.90f},{1,0, 1,0.28f,0.48f,0.90f},{1,2, 1,0.62f,0.78f,1.0f},{-1,2, 1,0.62f,0.78f,1.0f}
-    };
-    constexpr GLushort indices[] = {
-        0,1,2, 0,2,3, 5,4,7, 5,7,6, 4,0,3, 4,3,7,
-        1,5,6, 1,6,2, 3,2,6, 3,6,7, 4,5,1, 4,1,0
-    };
-    constexpr GLushort edges[] = {
-        0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4,
-        0,4, 1,5, 2,6, 3,7
-    };
-    bindMesh(cubeVao, cubeVbo, vertices, sizeof(vertices));
+    if (cubeEdgeEbo) glDeleteBuffers(1, &cubeEdgeEbo);
+    if (cubeEbo) glDeleteBuffers(1, &cubeEbo);
+    if (cubeVbo) glDeleteBuffers(1, &cubeVbo);
+    if (cubeVao) glDeleteVertexArrays(1, &cubeVao);
+    cubeVao = cubeVbo = cubeEbo = cubeEdgeEbo = 0;
+
+    std::vector<Vertex> vertices;
+    vertices.reserve(editableMesh.vertices().size());
+    for (const auto& vertex : editableMesh.vertices()) {
+        const float shade = std::clamp((vertex.position.y + 1.0f) * 0.16f, 0.0f, 0.32f);
+        vertices.push_back({vertex.position.x, vertex.position.y + 1.0f, vertex.position.z,
+                            0.30f + shade, 0.50f + shade, 0.92f + shade * 0.2f});
+    }
+
+    std::vector<GLushort> triangles;
+    std::set<std::pair<GLushort, GLushort>> uniqueEdges;
+    for (const auto& face : editableMesh.faces()) {
+        if (face.deleted || face.vertices.size() < 3U) continue;
+        const auto first = static_cast<GLushort>(face.vertices[0]);
+        for (std::size_t i = 1; i + 1 < face.vertices.size(); ++i) {
+            triangles.push_back(first);
+            triangles.push_back(static_cast<GLushort>(face.vertices[i]));
+            triangles.push_back(static_cast<GLushort>(face.vertices[i + 1]));
+        }
+        for (std::size_t i = 0; i < face.vertices.size(); ++i) {
+            auto a = static_cast<GLushort>(face.vertices[i]);
+            auto b = static_cast<GLushort>(face.vertices[(i + 1U) % face.vertices.size()]);
+            if (a > b) std::swap(a, b);
+            uniqueEdges.emplace(a, b);
+        }
+    }
+    std::vector<GLushort> edges;
+    edges.reserve(uniqueEdges.size() * 2U);
+    for (const auto& [a, b] : uniqueEdges) { edges.push_back(a); edges.push_back(b); }
+    cubeIndexCount = static_cast<GLsizei>(triangles.size());
+    cubeEdgeIndexCount = static_cast<GLsizei>(edges.size());
+
+    bindMesh(cubeVao, cubeVbo, vertices.data(), vertices.size() * sizeof(Vertex));
     glGenBuffers(1, &cubeEbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(triangles.size() * sizeof(GLushort)),
+                 triangles.data(), GL_STATIC_DRAW);
     glGenBuffers(1, &cubeEdgeEbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(edges), edges, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(edges.size() * sizeof(GLushort)),
+                 edges.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glBindVertexArray(0);
 }
@@ -253,14 +284,14 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, cubeMvp.m);
     glBindVertexArray(cubeVao);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
-    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
+    glDrawElements(GL_TRIANGLES, cubeIndexCount, GL_UNSIGNED_SHORT, nullptr);
     if (cubeSelected) {
         glDisable(GL_CULL_FACE);
         glLineWidth(3.0f);
         glUniform1i(overrideLocation, GL_TRUE);
         glUniform3f(overrideColorLocation, 1.0f, 0.62f, 0.08f);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
-        glDrawElements(GL_LINES, 24, GL_UNSIGNED_SHORT, nullptr);
+        glDrawElements(GL_LINES, cubeEdgeIndexCount, GL_UNSIGNED_SHORT, nullptr);
         glUniform1i(overrideLocation, GL_FALSE);
         glEnable(GL_CULL_FACE);
     }
@@ -304,7 +335,7 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     glUniform3f(overrideColorLocation, 1.0f, 0.0f, 0.0f);
     glBindVertexArray(cubeVao);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
-    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
+    glDrawElements(GL_TRIANGLES, cubeIndexCount, GL_UNSIGNED_SHORT, nullptr);
     unsigned char pixel[4]{};
     const int px = std::clamp(static_cast<int>(x), 0, viewportWidth - 1);
     const int py = std::clamp(viewportHeight - 1 - static_cast<int>(y), 0, viewportHeight - 1);
@@ -328,6 +359,18 @@ Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat
     else if (axis == 2) next.position.z += amount;
     else return JNI_FALSE;
     return editor.applyTransform(cubeObjectId, next) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance) {
+    if (!cubeSelected) return JNI_FALSE;
+    editableMesh.clearSelection();
+    if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
+    const auto result = editableMesh.extrudeFace(activeFace, distance);
+    if (!result) return JNI_FALSE;
+    activeFace = *result;
+    createCube();
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

@@ -19,6 +19,8 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - X/Y/Z move controls with native undo and redo actions
 - Editable polygon mesh core with vertex/face IDs, selection, topology validation, normals, statistics, deletion, and face extrusion
 - Procedural editable cube and plane primitives
+- Renderer geometry generated from `EditableMesh` instead of a hardcoded cube
+- Edit-mode extrusion rebuilds triangle and wireframe GPU buffers at runtime
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB
 - R8 code shrinking, resource shrinking, signature verification, and mapping artifacts

@@ -60,6 +60,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(0, 0.25f) }) { Text("X+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(1, 0.25f) }) { Text("Y+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(2, 0.25f) }) { Text("Z+") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 Spacer(Modifier.weight(1f))
                 Text("OpenGL ES • Dual ABI", color = Color(0xFF8E939E), style = MaterialTheme.typography.labelSmall)
             }
@@ -151,6 +152,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     }
 
     fun nudge(axis: Int, amount: Float) = queueEvent { NativeRenderer.nativeNudge(axis, amount) }
+    fun extrude(distance: Float) = queueEvent { NativeRenderer.nativeExtrude(distance) }
     fun undo() = queueEvent { NativeRenderer.nativeUndo() }
     fun redo() = queueEvent { NativeRenderer.nativeRedo() }
 
@@ -178,6 +180,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativePan(dx: Float, dy: Float)
     external fun nativePick(x: Float, y: Float): Boolean
     external fun nativeNudge(axis: Int, amount: Float): Boolean
+    external fun nativeExtrude(distance: Float): Boolean
     external fun nativeUndo(): Boolean
     external fun nativeRedo(): Boolean
     external fun nativeCapabilities(): String
