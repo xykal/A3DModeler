@@ -82,6 +82,9 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var lastY = 0f
     private var lastCentroidX = 0f
     private var lastCentroidY = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var moved = false
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -105,12 +108,16 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
             MotionEvent.ACTION_DOWN -> {
                 lastX = event.x
                 lastY = event.y
+                downX = event.x
+                downY = event.y
+                moved = false
             }
             MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount >= 2) {
                 lastCentroidX = (event.getX(0) + event.getX(1)) * 0.5f
                 lastCentroidY = (event.getY(0) + event.getY(1)) * 0.5f
             }
             MotionEvent.ACTION_MOVE -> {
+                if (kotlin.math.abs(event.x - downX) > 8f || kotlin.math.abs(event.y - downY) > 8f) moved = true
                 if (event.pointerCount == 1) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
@@ -126,6 +133,11 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                     lastCentroidX = cx
                     lastCentroidY = cy
                 }
+            }
+            MotionEvent.ACTION_UP -> if (!moved) {
+                val x = event.x
+                val y = event.y
+                queueEvent { NativeRenderer.nativePick(x, y) }
             }
         }
         return true
@@ -152,6 +164,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeOrbit(dx: Float, dy: Float)
     external fun nativeZoom(scale: Float)
     external fun nativePan(dx: Float, dy: Float)
+    external fun nativePick(x: Float, y: Float): Boolean
     external fun nativeCapabilities(): String
     external fun nativeRelease()
 

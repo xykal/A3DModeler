@@ -17,9 +17,11 @@ struct Vec3 { float x, y, z; };
 
 GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
-GLuint cubeVao = 0, cubeVbo = 0, cubeEbo = 0;
+GLuint cubeVao = 0, cubeVbo = 0, cubeEbo = 0, cubeEdgeEbo = 0;
+GLuint pickFbo = 0, pickColor = 0, pickDepth = 0;
 GLsizei gridVertexCount = 0;
-GLint mvpLocation = -1;
+GLint mvpLocation = -1, overrideLocation = -1, overrideColorLocation = -1;
+bool cubeSelected = false;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
 Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
@@ -38,7 +40,9 @@ constexpr char kFragmentShader[] = R"(#version 300 es
 precision mediump float;
 in vec3 vColor;
 out vec4 fragColor;
-void main() { fragColor = vec4(vColor, 1.0); }
+uniform bool uOverride;
+uniform vec3 uOverrideColor;
+void main() { fragColor = vec4(uOverride ? uOverrideColor : vColor, 1.0); }
 )";
 
 Mat4 multiply(const Mat4& a, const Mat4& b) {
@@ -130,21 +134,55 @@ void createCube() {
         0,1,2, 0,2,3, 5,4,7, 5,7,6, 4,0,3, 4,3,7,
         1,5,6, 1,6,2, 3,2,6, 3,6,7, 4,5,1, 4,1,0
     };
+    constexpr GLushort edges[] = {
+        0,1, 1,2, 2,3, 3,0, 4,5, 5,6, 6,7, 7,4,
+        0,4, 1,5, 2,6, 3,7
+    };
     bindMesh(cubeVao, cubeVbo, vertices, sizeof(vertices));
     glGenBuffers(1, &cubeEbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    glGenBuffers(1, &cubeEdgeEbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(edges), edges, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glBindVertexArray(0);
 }
 
+void createPickTarget(int width, int height) {
+    if (pickDepth) glDeleteRenderbuffers(1, &pickDepth);
+    if (pickColor) glDeleteTextures(1, &pickColor);
+    if (pickFbo) glDeleteFramebuffers(1, &pickFbo);
+    glGenFramebuffers(1, &pickFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, pickFbo);
+    glGenTextures(1, &pickColor);
+    glBindTexture(GL_TEXTURE_2D, pickColor);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pickColor, 0);
+    glGenRenderbuffers(1, &pickDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, pickDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, pickDepth);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        __android_log_print(ANDROID_LOG_ERROR, kTag, "Picking framebuffer is incomplete");
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 void releaseResources() {
+    if (pickDepth) glDeleteRenderbuffers(1, &pickDepth);
+    if (pickColor) glDeleteTextures(1, &pickColor);
+    if (pickFbo) glDeleteFramebuffers(1, &pickFbo);
+    if (cubeEdgeEbo) glDeleteBuffers(1, &cubeEdgeEbo);
     if (cubeEbo) glDeleteBuffers(1, &cubeEbo);
     if (cubeVbo) glDeleteBuffers(1, &cubeVbo);
     if (gridVbo) glDeleteBuffers(1, &gridVbo);
     if (cubeVao) glDeleteVertexArrays(1, &cubeVao);
     if (gridVao) glDeleteVertexArrays(1, &gridVao);
     if (program) glDeleteProgram(program);
-    program = gridVao = gridVbo = cubeVao = cubeVbo = cubeEbo = 0;
+    program = gridVao = gridVbo = cubeVao = cubeVbo = cubeEbo = cubeEdgeEbo = 0;
+    pickFbo = pickColor = pickDepth = 0;
 }
 
 void createResources() {
@@ -155,6 +193,8 @@ void createResources() {
     glAttachShader(program, vs); glAttachShader(program, fs); glLinkProgram(program);
     glDeleteShader(vs); glDeleteShader(fs);
     mvpLocation = glGetUniformLocation(program, "uMvp");
+    overrideLocation = glGetUniformLocation(program, "uOverride");
+    overrideColorLocation = glGetUniformLocation(program, "uOverrideColor");
     createGrid();
     createCube();
 }
@@ -181,7 +221,9 @@ Java_ai_arena_a3d_NativeRenderer_nativeSurfaceCreated(JNIEnv*, jobject) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeSurfaceChanged(JNIEnv*, jobject, jint width, jint height) {
-    viewportWidth = width; viewportHeight = height; glViewport(0, 0, width, height);
+    viewportWidth = width; viewportHeight = height;
+    glViewport(0, 0, width, height);
+    createPickTarget(width, height);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -191,10 +233,22 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glUseProgram(program);
     const Mat4 mvp = cameraMvp();
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
+    glUniform1i(overrideLocation, GL_FALSE);
     glBindVertexArray(gridVao);
     glDrawArrays(GL_LINES, 0, gridVertexCount);
     glBindVertexArray(cubeVao);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
+    if (cubeSelected) {
+        glDisable(GL_CULL_FACE);
+        glLineWidth(3.0f);
+        glUniform1i(overrideLocation, GL_TRUE);
+        glUniform3f(overrideColorLocation, 1.0f, 0.62f, 0.08f);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
+        glDrawElements(GL_LINES, 24, GL_UNSIGNED_SHORT, nullptr);
+        glUniform1i(overrideLocation, GL_FALSE);
+        glEnable(GL_CULL_FACE);
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -216,6 +270,32 @@ Java_ai_arena_a3d_NativeRenderer_nativePan(JNIEnv*, jobject, jfloat dx, jfloat d
     cameraTarget.x += (-dx * right.x + dy * forward.x) * scale;
     cameraTarget.z += (-dx * right.z + dy * forward.z) * scale;
     cameraTarget.y += dy * scale * 0.35f;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y) {
+    if (!pickFbo) return JNI_FALSE;
+    glBindFramebuffer(GL_FRAMEBUFFER, pickFbo);
+    glViewport(0, 0, viewportWidth, viewportHeight);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glUseProgram(program);
+    const Mat4 mvp = cameraMvp();
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
+    glUniform1i(overrideLocation, GL_TRUE);
+    glUniform3f(overrideColorLocation, 1.0f, 0.0f, 0.0f);
+    glBindVertexArray(cubeVao);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
+    glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
+    unsigned char pixel[4]{};
+    const int px = std::clamp(static_cast<int>(x), 0, viewportWidth - 1);
+    const int py = std::clamp(viewportHeight - 1 - static_cast<int>(y), 0, viewportHeight - 1);
+    glReadPixels(px, py, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    cubeSelected = pixel[0] > 127;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, viewportWidth, viewportHeight);
+    glUniform1i(overrideLocation, GL_FALSE);
+    return cubeSelected ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

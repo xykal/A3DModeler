@@ -10,6 +10,8 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - One-finger orbit, two-finger pan, and pinch-to-zoom navigation
 - Runtime GPU/OpenGL ES capability logging
 - Lifecycle-safe native GPU resource cleanup
+- GPU ID-buffer object picking by tapping the viewport
+- Orange wireframe selection highlight
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Android 10 (API 29) minimum
 
@@ -25,4 +27,4 @@ Open the folder in Android Studio and run the `app` configuration, or generate/u
 
 ## Next milestone
 
-Add object picking, transform gizmos, renderer feature tiers, and unit-testable editor-core modules.
+Add transform gizmos, renderer feature tiers, and unit-testable editor-core modules.
