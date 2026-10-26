@@ -17,6 +17,7 @@ constexpr float kPi = 3.14159265358979323846f;
 struct Mat4 { float m[16]{}; };
 struct Vertex { float x, y, z, r, g, b; };
 struct Vec3 { float x, y, z; };
+struct FaceDrawRange { a3d::FaceId face; GLsizei firstIndex; GLsizei indexCount; };
 
 GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
@@ -29,6 +30,7 @@ a3d::Editor editor;
 a3d::EditableMesh editableMesh = a3d::EditableMesh::cube();
 a3d::ObjectId cubeObjectId = 0;
 a3d::FaceId activeFace = 4;
+std::vector<FaceDrawRange> faceDrawRanges;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
 Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
@@ -156,14 +158,19 @@ void createCube() {
 
     std::vector<GLushort> triangles;
     std::set<std::pair<GLushort, GLushort>> uniqueEdges;
-    for (const auto& face : editableMesh.faces()) {
+    faceDrawRanges.clear();
+    for (std::size_t faceIndex = 0; faceIndex < editableMesh.faces().size(); ++faceIndex) {
+        const auto& face = editableMesh.faces()[faceIndex];
         if (face.deleted || face.vertices.size() < 3U) continue;
+        const GLsizei firstIndex = static_cast<GLsizei>(triangles.size());
         const auto first = static_cast<GLushort>(face.vertices[0]);
         for (std::size_t i = 1; i + 1 < face.vertices.size(); ++i) {
             triangles.push_back(first);
             triangles.push_back(static_cast<GLushort>(face.vertices[i]));
             triangles.push_back(static_cast<GLushort>(face.vertices[i + 1]));
         }
+        faceDrawRanges.push_back({static_cast<a3d::FaceId>(faceIndex), firstIndex,
+                                  static_cast<GLsizei>(triangles.size()) - firstIndex});
         for (std::size_t i = 0; i < face.vertices.size(); ++i) {
             auto a = static_cast<GLushort>(face.vertices[i]);
             auto b = static_cast<GLushort>(face.vertices[(i + 1U) % face.vertices.size()]);
@@ -286,6 +293,17 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glDrawElements(GL_TRIANGLES, cubeIndexCount, GL_UNSIGNED_SHORT, nullptr);
     if (cubeSelected) {
+        const auto selected = std::find_if(faceDrawRanges.begin(), faceDrawRanges.end(),
+            [](const FaceDrawRange& range) { return range.face == activeFace; });
+        if (selected != faceDrawRanges.end()) {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffset(-1.0f, -1.0f);
+            glUniform1i(overrideLocation, GL_TRUE);
+            glUniform3f(overrideColorLocation, 1.0f, 0.48f, 0.06f);
+            glDrawElements(GL_TRIANGLES, selected->indexCount, GL_UNSIGNED_SHORT,
+                           reinterpret_cast<void*>(static_cast<std::size_t>(selected->firstIndex) * sizeof(GLushort)));
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
         glDisable(GL_CULL_FACE);
         glLineWidth(3.0f);
         glUniform1i(overrideLocation, GL_TRUE);
@@ -332,15 +350,28 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     const Mat4 mvp = multiply(viewProjection, translation(position.x, position.y, position.z));
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
     glUniform1i(overrideLocation, GL_TRUE);
-    glUniform3f(overrideColorLocation, 1.0f, 0.0f, 0.0f);
     glBindVertexArray(cubeVao);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
-    glDrawElements(GL_TRIANGLES, cubeIndexCount, GL_UNSIGNED_SHORT, nullptr);
+    for (const auto& range : faceDrawRanges) {
+        const std::uint32_t id = static_cast<std::uint32_t>(range.face) + 1U;
+        glUniform3f(overrideColorLocation,
+                   static_cast<float>(id & 0xFFU) / 255.0f,
+                   static_cast<float>((id >> 8U) & 0xFFU) / 255.0f,
+                   static_cast<float>((id >> 16U) & 0xFFU) / 255.0f);
+        glDrawElements(GL_TRIANGLES, range.indexCount, GL_UNSIGNED_SHORT,
+                       reinterpret_cast<void*>(static_cast<std::size_t>(range.firstIndex) * sizeof(GLushort)));
+    }
     unsigned char pixel[4]{};
     const int px = std::clamp(static_cast<int>(x), 0, viewportWidth - 1);
     const int py = std::clamp(viewportHeight - 1 - static_cast<int>(y), 0, viewportHeight - 1);
     glReadPixels(px, py, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
-    cubeSelected = pixel[0] > 127;
+    const std::uint32_t encoded = static_cast<std::uint32_t>(pixel[0]) |
+        (static_cast<std::uint32_t>(pixel[1]) << 8U) |
+        (static_cast<std::uint32_t>(pixel[2]) << 16U);
+    cubeSelected = encoded > 0U;
+    if (cubeSelected) activeFace = static_cast<a3d::FaceId>(encoded - 1U);
+    editableMesh.clearSelection();
+    if (cubeSelected) (void)editableMesh.setFaceSelected(activeFace, true);
     editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, viewportWidth, viewportHeight);

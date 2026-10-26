@@ -1,36 +1,45 @@
-name: Android CI
+name: Quality Gate
+
 on:
   push:
   pull_request:
 
 jobs:
-  build:
+  verify-editor-core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-      - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Test editor core
+      - name: Configure host verification
+        run: cmake -S editor-core -B /tmp/a3d-editor-core-verify -DCMAKE_BUILD_TYPE=Release
+      - name: Compile with strict warnings
+        run: cmake --build /tmp/a3d-editor-core-verify --parallel
+      - name: Run native tests
+        run: ctest --test-dir /tmp/a3d-editor-core-verify --output-on-failure
+      - name: Repository safety checks
         run: |
-          cmake -S editor-core -B /tmp/a3d-editor-core-build
-          cmake --build /tmp/a3d-editor-core-build --parallel
-          ctest --test-dir /tmp/a3d-editor-core-build --output-on-failure
-      - name: Build dual-ABI debug APK
-        run: gradle :app:assembleDebug --stacktrace
-      - name: Unit tests
-        run: gradle :app:testDebugUnitTest
-      - uses: actions/upload-artifact@v4
-        with:
-          name: a3d-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          test ! -f .env
+          test ! -f app/*.jks
+          test ! -f app/*.keystore
+          ! git grep -nE '(ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|BEGIN (RSA |EC )?PRIVATE KEY)' -- ':!*.md'
+          git diff --check
+
+  android-source-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release configuration exists
+        run: |
+          grep -q 'isMinifyEnabled = true' app/build.gradle.kts
+          grep -q 'isShrinkResources = true' app/build.gradle.kts
+          grep -q 'armeabi-v7a' app/build.gradle.kts
+          grep -q 'arm64-v8a' app/build.gradle.kts
+          grep -q 'A3D_KEYSTORE_FILE' app/build.gradle.kts
+      - name: Verify JNI contract names
+        run: |
+          for method in nativeSurfaceCreated nativeSurfaceChanged nativeDrawFrame nativeOrbit nativeZoom nativePan nativePick nativeNudge nativeExtrude nativeUndo nativeRedo nativeCapabilities nativeRelease; do
+            grep -q "external fun $method" app/src/main/java/ai/arena/a3d/MainActivity.kt
+            grep -q "NativeRenderer_$method" app/src/main/cpp/native_renderer.cpp
+          done
+
+# Deliberately no APK/AAB build here. Full signed builds remain manual in
+# release.yml and must not run until the modeling milestone is approved.
