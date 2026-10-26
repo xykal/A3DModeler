@@ -12,6 +12,9 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Lifecycle-safe native GPU resource cleanup
 - GPU ID-buffer object picking by tapping the viewport
 - Orange wireframe selection highlight
+- Platform-independent C++ editor core with scene/object IDs
+- Memory-budgeted command history with transform undo/redo
+- Host-side editor-core tests in CI
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Android 10 (API 29) minimum
 
@@ -27,4 +30,4 @@ Open the folder in Android Studio and run the `app` configuration, or generate/u
 
 ## Next milestone
 
-Add transform gizmos, renderer feature tiers, and unit-testable editor-core modules.
+Connect the renderer cube to editor-core state, then add interactive Move/Rotate/Scale gizmos and UI undo/redo actions.

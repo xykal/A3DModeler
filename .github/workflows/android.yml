@@ -19,6 +19,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Test editor core
+        run: |
+          cmake -S editor-core -B /tmp/a3d-editor-core-build
+          cmake --build /tmp/a3d-editor-core-build --parallel
+          ctest --test-dir /tmp/a3d-editor-core-build --output-on-failure
       - name: Build dual-ABI debug APK
         run: gradle :app:assembleDebug --stacktrace
       - name: Unit tests
