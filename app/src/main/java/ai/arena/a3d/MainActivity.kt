@@ -59,7 +59,12 @@ private fun EditorScreen() {
                     .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = {}) { Text("Select") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(0) }) { Text("Vertex") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(1) }) { Text("Edge") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(2) }) { Text("Face") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.selectAll() }) { Text("All") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.invertSelection() }) { Text("Invert") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.clearSelection() }) { Text("Clear") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(0, 0.25f) }) { Text("X+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(1, 0.25f) }) { Text("Y+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(2, 0.25f) }) { Text("Z+") }
@@ -157,6 +162,10 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         return true
     }
 
+    fun selectionMode(mode: Int) = queueEvent { NativeRenderer.nativeSetSelectionMode(mode) }
+    fun selectAll() = queueEvent { NativeRenderer.nativeSelectAll() }
+    fun invertSelection() = queueEvent { NativeRenderer.nativeInvertSelection() }
+    fun clearSelection() = queueEvent { NativeRenderer.nativeClearSelection() }
     fun nudge(axis: Int, amount: Float) = queueEvent { NativeRenderer.nativeNudge(axis, amount) }
     fun extrude(distance: Float) = queueEvent { NativeRenderer.nativeExtrude(distance) }
     fun inset(amount: Float) = queueEvent { NativeRenderer.nativeInset(amount) }
@@ -188,6 +197,10 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeZoom(scale: Float)
     external fun nativePan(dx: Float, dy: Float)
     external fun nativePick(x: Float, y: Float): Boolean
+    external fun nativeSetSelectionMode(mode: Int)
+    external fun nativeSelectAll()
+    external fun nativeInvertSelection()
+    external fun nativeClearSelection()
     external fun nativeNudge(axis: Int, amount: Float): Boolean
     external fun nativeExtrude(distance: Float): Boolean
     external fun nativeInset(amount: Float): Boolean

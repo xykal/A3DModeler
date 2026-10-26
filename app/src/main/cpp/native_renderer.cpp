@@ -18,6 +18,7 @@ struct Mat4 { float m[16]{}; };
 struct Vertex { float x, y, z, r, g, b; };
 struct Vec3 { float x, y, z; };
 struct FaceDrawRange { a3d::FaceId face; GLsizei firstIndex; GLsizei indexCount; };
+struct EdgeDrawRange { a3d::VertexId first; a3d::VertexId second; GLsizei firstIndex; };
 
 GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
@@ -35,7 +36,9 @@ std::vector<ActionKind> undoActions;
 std::vector<ActionKind> redoActions;
 a3d::ObjectId cubeObjectId = 0;
 a3d::FaceId activeFace = 4;
+a3d::SelectionMode selectionMode = a3d::SelectionMode::Face;
 std::vector<FaceDrawRange> faceDrawRanges;
+std::vector<EdgeDrawRange> edgeDrawRanges;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
 Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
@@ -47,6 +50,7 @@ uniform mat4 uMvp;
 out vec3 vColor;
 void main() {
     gl_Position = uMvp * vec4(aPosition, 1.0);
+    gl_PointSize = 14.0;
     vColor = aColor;
 })";
 
@@ -206,7 +210,12 @@ void createCube() {
     }
     std::vector<GLushort> edges;
     edges.reserve(uniqueEdges.size() * 2U);
-    for (const auto& [a, b] : uniqueEdges) { edges.push_back(a); edges.push_back(b); }
+    edgeDrawRanges.clear();
+    for (const auto& [a, b] : uniqueEdges) {
+        const GLsizei firstIndex = static_cast<GLsizei>(edges.size());
+        edges.push_back(a); edges.push_back(b);
+        edgeDrawRanges.push_back({a, b, firstIndex});
+    }
     cubeIndexCount = static_cast<GLsizei>(triangles.size());
     cubeEdgeIndexCount = static_cast<GLsizei>(edges.size());
 
@@ -319,20 +328,32 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glDrawElements(GL_TRIANGLES, cubeIndexCount, GL_UNSIGNED_SHORT, nullptr);
     if (cubeSelected) {
-        const auto selected = std::find_if(faceDrawRanges.begin(), faceDrawRanges.end(),
-            [](const FaceDrawRange& range) { return range.face == activeFace; });
-        if (selected != faceDrawRanges.end()) {
+        glUniform1i(overrideLocation, GL_TRUE);
+        glUniform3f(overrideColorLocation, 1.0f, 0.48f, 0.06f);
+        if (selectionMode == a3d::SelectionMode::Face) {
             glEnable(GL_POLYGON_OFFSET_FILL);
             glPolygonOffset(-1.0f, -1.0f);
-            glUniform1i(overrideLocation, GL_TRUE);
-            glUniform3f(overrideColorLocation, 1.0f, 0.48f, 0.06f);
-            glDrawElements(GL_TRIANGLES, selected->indexCount, GL_UNSIGNED_SHORT,
-                           reinterpret_cast<void*>(static_cast<std::size_t>(selected->firstIndex) * sizeof(GLushort)));
+            for (const auto& range : faceDrawRanges) {
+                if (range.face < editableMesh.faces().size() && editableMesh.faces()[range.face].selected)
+                    glDrawElements(GL_TRIANGLES, range.indexCount, GL_UNSIGNED_SHORT,
+                        reinterpret_cast<void*>(static_cast<std::size_t>(range.firstIndex) * sizeof(GLushort)));
+            }
             glDisable(GL_POLYGON_OFFSET_FILL);
+        } else if (selectionMode == a3d::SelectionMode::Edge) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
+            glLineWidth(5.0f);
+            for (const auto& edge : edgeDrawRanges) {
+                if (editableMesh.isEdgeSelected(edge.first, edge.second))
+                    glDrawElements(GL_LINES, 2, GL_UNSIGNED_SHORT,
+                        reinterpret_cast<void*>(static_cast<std::size_t>(edge.firstIndex) * sizeof(GLushort)));
+            }
+        } else {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            for (std::size_t i = 0; i < editableMesh.vertices().size(); ++i)
+                if (editableMesh.vertices()[i].selected) glDrawArrays(GL_POINTS, static_cast<GLint>(i), 1);
         }
         glDisable(GL_CULL_FACE);
-        glLineWidth(3.0f);
-        glUniform1i(overrideLocation, GL_TRUE);
+        glLineWidth(2.0f);
         glUniform3f(overrideColorLocation, 1.0f, 0.62f, 0.08f);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
         glDrawElements(GL_LINES, cubeEdgeIndexCount, GL_UNSIGNED_SHORT, nullptr);
@@ -377,15 +398,33 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
     glUniform1i(overrideLocation, GL_TRUE);
     glBindVertexArray(cubeVao);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
-    for (const auto& range : faceDrawRanges) {
-        const std::uint32_t id = static_cast<std::uint32_t>(range.face) + 1U;
+    const auto setPickColor = [](std::uint32_t id) {
         glUniform3f(overrideColorLocation,
                    static_cast<float>(id & 0xFFU) / 255.0f,
                    static_cast<float>((id >> 8U) & 0xFFU) / 255.0f,
                    static_cast<float>((id >> 16U) & 0xFFU) / 255.0f);
-        glDrawElements(GL_TRIANGLES, range.indexCount, GL_UNSIGNED_SHORT,
-                       reinterpret_cast<void*>(static_cast<std::size_t>(range.firstIndex) * sizeof(GLushort)));
+    };
+    if (selectionMode == a3d::SelectionMode::Face) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
+        for (const auto& range : faceDrawRanges) {
+            setPickColor(static_cast<std::uint32_t>(range.face) + 1U);
+            glDrawElements(GL_TRIANGLES, range.indexCount, GL_UNSIGNED_SHORT,
+                           reinterpret_cast<void*>(static_cast<std::size_t>(range.firstIndex) * sizeof(GLushort)));
+        }
+    } else if (selectionMode == a3d::SelectionMode::Edge) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
+        glLineWidth(10.0f);
+        for (std::size_t i = 0; i < edgeDrawRanges.size(); ++i) {
+            setPickColor(static_cast<std::uint32_t>(i) + 1U);
+            glDrawElements(GL_LINES, 2, GL_UNSIGNED_SHORT,
+                           reinterpret_cast<void*>(static_cast<std::size_t>(edgeDrawRanges[i].firstIndex) * sizeof(GLushort)));
+        }
+    } else {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        for (std::size_t i = 0; i < editableMesh.vertices().size(); ++i) {
+            setPickColor(static_cast<std::uint32_t>(i) + 1U);
+            glDrawArrays(GL_POINTS, static_cast<GLint>(i), 1);
+        }
     }
     unsigned char pixel[4]{};
     const int px = std::clamp(static_cast<int>(x), 0, viewportWidth - 1);
@@ -395,9 +434,21 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
         (static_cast<std::uint32_t>(pixel[1]) << 8U) |
         (static_cast<std::uint32_t>(pixel[2]) << 16U);
     cubeSelected = encoded > 0U;
-    if (cubeSelected) activeFace = static_cast<a3d::FaceId>(encoded - 1U);
     editableMesh.clearSelection();
-    if (cubeSelected) (void)editableMesh.setFaceSelected(activeFace, true);
+    if (cubeSelected) {
+        const std::uint32_t picked = encoded - 1U;
+        if (selectionMode == a3d::SelectionMode::Face) {
+            activeFace = static_cast<a3d::FaceId>(picked);
+            (void)editableMesh.setFaceSelected(activeFace, true);
+        } else if (selectionMode == a3d::SelectionMode::Edge && picked < edgeDrawRanges.size()) {
+            const auto& edge = edgeDrawRanges[picked];
+            (void)editableMesh.setEdgeSelected(edge.first, edge.second, true);
+        } else if (selectionMode == a3d::SelectionMode::Vertex && picked < editableMesh.vertices().size()) {
+            (void)editableMesh.setVertexSelected(static_cast<a3d::VertexId>(picked), true);
+        } else {
+            cubeSelected = false;
+        }
+    }
     editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, viewportWidth, viewportHeight);
@@ -422,7 +473,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance) {
-    if (!cubeSelected) return JNI_FALSE;
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = editableMesh;
     editableMesh.clearSelection();
     if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
@@ -437,7 +488,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
-    if (!cubeSelected) return JNI_FALSE;
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = editableMesh;
     editableMesh.clearSelection();
     if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
@@ -452,7 +503,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
-    if (!cubeSelected) return JNI_FALSE;
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = editableMesh;
     if (!editableMesh.deleteFace(activeFace)) return JNI_FALSE;
     syncActiveFace();
@@ -464,13 +515,38 @@ Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeFlipFace(JNIEnv*, jobject) {
-    if (!cubeSelected) return JNI_FALSE;
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = editableMesh;
     if (!editableMesh.flipFace(activeFace)) return JNI_FALSE;
     if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSetSelectionMode(JNIEnv*, jobject, jint mode) {
+    selectionMode = mode == 0 ? a3d::SelectionMode::Vertex
+                  : mode == 1 ? a3d::SelectionMode::Edge
+                              : a3d::SelectionMode::Face;
+    editableMesh.clearSelection();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSelectAll(JNIEnv*, jobject) {
+    editableMesh.selectAll(selectionMode);
+    cubeSelected = true;
+    editor.select(cubeObjectId);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeInvertSelection(JNIEnv*, jobject) {
+    editableMesh.invertSelection(selectionMode);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeClearSelection(JNIEnv*, jobject) {
+    editableMesh.clearSelection();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
