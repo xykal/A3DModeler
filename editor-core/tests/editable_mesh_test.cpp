@@ -63,5 +63,21 @@ int main() {
     assert(history.commit(beforeInset, historyMesh));
     assert(!history.canRedo());
     assert(history.memoryUsed() > 0U);
+
+    auto normalMesh = a3d::EditableMesh::plane();
+    const auto beforeNormal = normalMesh.faces()[0].normal;
+    assert(normalMesh.flipFace(0));
+    const auto afterNormal = normalMesh.faces()[0].normal;
+    assert(std::fabs(beforeNormal.x + afterNormal.x) < 0.0001F);
+    assert(std::fabs(beforeNormal.y + afterNormal.y) < 0.0001F);
+    assert(std::fabs(beforeNormal.z + afterNormal.z) < 0.0001F);
+    assert(!normalMesh.flipFace(99));
+
+    const auto beforeDelete = normalMesh;
+    assert(normalMesh.deleteFace(0));
+    assert(history.commit(beforeDelete, normalMesh));
+    assert(normalMesh.stats().faces == 0);
+    assert(history.undo(normalMesh));
+    assert(normalMesh.stats().faces == 1);
     return 0;
 }

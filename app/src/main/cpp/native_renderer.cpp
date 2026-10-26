@@ -451,6 +451,29 @@ Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
+    if (!cubeSelected) return JNI_FALSE;
+    const a3d::EditableMesh before = editableMesh;
+    if (!editableMesh.deleteFace(activeFace)) return JNI_FALSE;
+    syncActiveFace();
+    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    recordAction(ActionKind::MeshTopology);
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeFlipFace(JNIEnv*, jobject) {
+    if (!cubeSelected) return JNI_FALSE;
+    const a3d::EditableMesh before = editableMesh;
+    if (!editableMesh.flipFace(activeFace)) return JNI_FALSE;
+    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    recordAction(ActionKind::MeshTopology);
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeUndo(JNIEnv*, jobject) {
     if (undoActions.empty()) return JNI_FALSE;
     const ActionKind kind = undoActions.back();

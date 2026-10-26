@@ -10,7 +10,9 @@ import android.view.ScaleGestureDetector
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,7 +55,8 @@ private fun EditorScreen() {
         },
         bottomBar = {
             Row(
-                Modifier.fillMaxWidth().height(44.dp).background(Color(0xFF202329)).padding(horizontal = 8.dp),
+                Modifier.fillMaxWidth().height(48.dp).background(Color(0xFF202329))
+                    .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = {}) { Text("Select") }
@@ -62,7 +65,9 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(2, 0.25f) }) { Text("Z+") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
-                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { EditorViewportRegistry.viewport?.flipFace() }) { Text("Flip") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.deleteFace() }) { Text("Delete") }
+                Spacer(Modifier.width(16.dp))
                 Text("OpenGL ES • Dual ABI", color = Color(0xFF8E939E), style = MaterialTheme.typography.labelSmall)
             }
         }
@@ -155,6 +160,8 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun nudge(axis: Int, amount: Float) = queueEvent { NativeRenderer.nativeNudge(axis, amount) }
     fun extrude(distance: Float) = queueEvent { NativeRenderer.nativeExtrude(distance) }
     fun inset(amount: Float) = queueEvent { NativeRenderer.nativeInset(amount) }
+    fun deleteFace() = queueEvent { NativeRenderer.nativeDeleteFace() }
+    fun flipFace() = queueEvent { NativeRenderer.nativeFlipFace() }
     fun undo() = queueEvent { NativeRenderer.nativeUndo() }
     fun redo() = queueEvent { NativeRenderer.nativeRedo() }
 
@@ -184,6 +191,8 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeNudge(axis: Int, amount: Float): Boolean
     external fun nativeExtrude(distance: Float): Boolean
     external fun nativeInset(amount: Float): Boolean
+    external fun nativeDeleteFace(): Boolean
+    external fun nativeFlipFace(): Boolean
     external fun nativeUndo(): Boolean
     external fun nativeRedo(): Boolean
     external fun nativeCapabilities(): String

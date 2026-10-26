@@ -64,6 +64,13 @@ bool EditableMesh::deleteFace(FaceId face) {
     return true;
 }
 
+bool EditableMesh::flipFace(FaceId face) {
+    if (face >= faces_.size() || faces_[face].deleted) return false;
+    std::reverse(faces_[face].vertices.begin(), faces_[face].vertices.end());
+    recalculateNormals();
+    return true;
+}
+
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     if (faceId >= faces_.size() || faces_[faceId].deleted) return std::nullopt;
     const MeshFace source = faces_[faceId];
