@@ -44,6 +44,8 @@ private fun EditorScreen() {
                     TextButton(onClick = { mode = if (mode == "Object") "Edit" else "Object" }) {
                         Text("$mode Mode")
                     }
+                    TextButton(onClick = { EditorViewportRegistry.viewport?.undo() }) { Text("Undo") }
+                    TextButton(onClick = { EditorViewportRegistry.viewport?.redo() }) { Text("Redo") }
                     Spacer(Modifier.weight(1f))
                     Text("Untitled", color = Color(0xFFBEC2CC))
                 }
@@ -54,9 +56,10 @@ private fun EditorScreen() {
                 Modifier.fillMaxWidth().height(44.dp).background(Color(0xFF202329)).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                listOf("Select", "Move", "Rotate", "Scale").forEach { tool ->
-                    TextButton(onClick = {}) { Text(tool) }
-                }
+                TextButton(onClick = {}) { Text("Select") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(0, 0.25f) }) { Text("X+") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(1, 0.25f) }) { Text("Y+") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.nudge(2, 0.25f) }) { Text("Z+") }
                 Spacer(Modifier.weight(1f))
                 Text("OpenGL ES • Dual ABI", color = Color(0xFF8E939E), style = MaterialTheme.typography.labelSmall)
             }
@@ -72,9 +75,13 @@ private fun NativeViewport(modifier: Modifier = Modifier) {
         modifier = modifier,
         factory = { context ->
             checkOpenGles31(context)
-            EditorGLSurfaceView(context)
+            EditorGLSurfaceView(context).also { EditorViewportRegistry.viewport = it }
         }
     )
+}
+
+private object EditorViewportRegistry {
+    var viewport: EditorGLSurfaceView? = null
 }
 
 private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
@@ -143,7 +150,12 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         return true
     }
 
+    fun nudge(axis: Int, amount: Float) = queueEvent { NativeRenderer.nativeNudge(axis, amount) }
+    fun undo() = queueEvent { NativeRenderer.nativeUndo() }
+    fun redo() = queueEvent { NativeRenderer.nativeRedo() }
+
     override fun onDetachedFromWindow() {
+        if (EditorViewportRegistry.viewport === this) EditorViewportRegistry.viewport = null
         queueEvent { NativeRenderer.nativeRelease() }
         super.onDetachedFromWindow()
     }
@@ -165,6 +177,9 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeZoom(scale: Float)
     external fun nativePan(dx: Float, dy: Float)
     external fun nativePick(x: Float, y: Float): Boolean
+    external fun nativeNudge(axis: Int, amount: Float): Boolean
+    external fun nativeUndo(): Boolean
+    external fun nativeRedo(): Boolean
     external fun nativeCapabilities(): String
     external fun nativeRelease()
 

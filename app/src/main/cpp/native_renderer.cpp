@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <GLES3/gl31.h>
 #include <android/log.h>
+#include "a3d/editor_core.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -22,6 +23,8 @@ GLuint pickFbo = 0, pickColor = 0, pickDepth = 0;
 GLsizei gridVertexCount = 0;
 GLint mvpLocation = -1, overrideLocation = -1, overrideColorLocation = -1;
 bool cubeSelected = false;
+a3d::Editor editor;
+a3d::ObjectId cubeObjectId = 0;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
 Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
@@ -51,6 +54,13 @@ Mat4 multiply(const Mat4& a, const Mat4& b) {
         for (int row = 0; row < 4; ++row)
             for (int k = 0; k < 4; ++k)
                 out.m[column * 4 + row] += a.m[k * 4 + row] * b.m[column * 4 + k];
+    return out;
+}
+
+Mat4 translation(float x, float y, float z) {
+    Mat4 out;
+    out.m[0] = out.m[5] = out.m[10] = out.m[15] = 1.0f;
+    out.m[12] = x; out.m[13] = y; out.m[14] = z;
     return out;
 }
 
@@ -213,6 +223,7 @@ Mat4 cameraMvp() {
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeSurfaceCreated(JNIEnv*, jobject) {
+    if (cubeObjectId == 0) cubeObjectId = editor.scene().createObject();
     createResources();
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -231,11 +242,15 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glClearColor(0.055f, 0.065f, 0.085f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(program);
-    const Mat4 mvp = cameraMvp();
-    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
+    const Mat4 viewProjection = cameraMvp();
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, viewProjection.m);
     glUniform1i(overrideLocation, GL_FALSE);
     glBindVertexArray(gridVao);
     glDrawArrays(GL_LINES, 0, gridVertexCount);
+    a3d::Vec3 position{};
+    if (const auto* cube = editor.scene().find(cubeObjectId)) position = cube->transform.position;
+    const Mat4 cubeMvp = multiply(viewProjection, translation(position.x, position.y, position.z));
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, cubeMvp.m);
     glBindVertexArray(cubeVao);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEbo);
     glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, nullptr);
@@ -280,7 +295,10 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(program);
-    const Mat4 mvp = cameraMvp();
+    const Mat4 viewProjection = cameraMvp();
+    a3d::Vec3 position{};
+    if (const auto* cube = editor.scene().find(cubeObjectId)) position = cube->transform.position;
+    const Mat4 mvp = multiply(viewProjection, translation(position.x, position.y, position.z));
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
     glUniform1i(overrideLocation, GL_TRUE);
     glUniform3f(overrideColorLocation, 1.0f, 0.0f, 0.0f);
@@ -292,10 +310,34 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     const int py = std::clamp(viewportHeight - 1 - static_cast<int>(y), 0, viewportHeight - 1);
     glReadPixels(px, py, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
     cubeSelected = pixel[0] > 127;
+    editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, viewportWidth, viewportHeight);
     glUniform1i(overrideLocation, GL_FALSE);
     return cubeSelected ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat amount) {
+    if (!cubeSelected) return JNI_FALSE;
+    const auto* cube = editor.scene().find(cubeObjectId);
+    if (!cube) return JNI_FALSE;
+    a3d::Transform next = cube->transform;
+    if (axis == 0) next.position.x += amount;
+    else if (axis == 1) next.position.y += amount;
+    else if (axis == 2) next.position.z += amount;
+    else return JNI_FALSE;
+    return editor.applyTransform(cubeObjectId, next) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeUndo(JNIEnv*, jobject) {
+    return editor.history().undo(editor.scene()) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeRedo(JNIEnv*, jobject) {
+    return editor.history().redo(editor.scene()) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
