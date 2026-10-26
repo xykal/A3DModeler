@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseStoreFile = providers.environmentVariable("A3D_KEYSTORE_FILE")
+val releaseStorePassword = providers.environmentVariable("A3D_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("A3D_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("A3D_KEY_PASSWORD")
+
 android {
     namespace = "ai.arena.a3d"
     compileSdk = 35
@@ -13,8 +18,8 @@ android {
         applicationId = "ai.arena.a3d"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-alpha01"
+        versionCode = 2
+        versionName = "0.1.0-alpha02"
 
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a")
@@ -27,6 +32,27 @@ android {
     }
 
     buildFeatures { compose = true }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = false
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile.isPresent) {
+                storeFile = file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+                storeType = "PKCS12"
+            }
+        }
+    }
 
     externalNativeBuild {
         cmake {
@@ -44,6 +70,8 @@ android {
         debug { applicationIdSuffix = ".debug" }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
