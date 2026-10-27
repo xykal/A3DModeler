@@ -3,6 +3,7 @@
 #include <android/log.h>
 #include "a3d/editor_core.hpp"
 #include "a3d/editable_mesh.hpp"
+#include "a3d/modeling_scene.hpp"
 #include <algorithm>
 #include <array>
 #include <set>
@@ -30,8 +31,8 @@ GLint mvpLocation = -1, overrideLocation = -1, overrideColorLocation = -1;
 bool cubeSelected = false;
 enum class ActionKind { ObjectTransform, MeshTopology };
 
-a3d::Editor editor;
-a3d::EditableMesh editableMesh = a3d::EditableMesh::cube();
+a3d::ModelingScene modelingScene;
+a3d::EditableMesh* activeMesh = nullptr;
 a3d::MeshHistory meshHistory;
 std::vector<ActionKind> undoActions;
 std::vector<ActionKind> redoActions;
@@ -174,8 +175,8 @@ void createGizmo() {
 }
 
 bool hasMeshSelection() {
-    return editableMesh.selectedVertexCount() > 0U || editableMesh.selectedEdgeCount() > 0U ||
-           editableMesh.selectedFaceCount() > 0U;
+    return activeMesh->selectedVertexCount() > 0U || activeMesh->selectedEdgeCount() > 0U ||
+           activeMesh->selectedFaceCount() > 0U;
 }
 
 void recordAction(ActionKind kind) {
@@ -184,15 +185,15 @@ void recordAction(ActionKind kind) {
 }
 
 void syncActiveFace() {
-    for (std::size_t i = 0; i < editableMesh.faces().size(); ++i) {
-        const auto& face = editableMesh.faces()[i];
+    for (std::size_t i = 0; i < activeMesh->faces().size(); ++i) {
+        const auto& face = activeMesh->faces()[i];
         if (!face.deleted && face.selected) {
             activeFace = static_cast<a3d::FaceId>(i);
             return;
         }
     }
-    for (std::size_t i = 0; i < editableMesh.faces().size(); ++i) {
-        if (!editableMesh.faces()[i].deleted) {
+    for (std::size_t i = 0; i < activeMesh->faces().size(); ++i) {
+        if (!activeMesh->faces()[i].deleted) {
             activeFace = static_cast<a3d::FaceId>(i);
             return;
         }
@@ -207,8 +208,8 @@ void createCube() {
     cubeVao = cubeVbo = cubeEbo = cubeEdgeEbo = 0;
 
     std::vector<Vertex> vertices;
-    vertices.reserve(editableMesh.vertices().size());
-    for (const auto& vertex : editableMesh.vertices()) {
+    vertices.reserve(activeMesh->vertices().size());
+    for (const auto& vertex : activeMesh->vertices()) {
         const float shade = std::clamp((vertex.position.y + 1.0f) * 0.16f, 0.0f, 0.32f);
         vertices.push_back({vertex.position.x, vertex.position.y + 1.0f, vertex.position.z,
                             0.30f + shade, 0.50f + shade, 0.92f + shade * 0.2f});
@@ -217,8 +218,8 @@ void createCube() {
     std::vector<GLushort> triangles;
     std::set<std::pair<GLushort, GLushort>> uniqueEdges;
     faceDrawRanges.clear();
-    for (std::size_t faceIndex = 0; faceIndex < editableMesh.faces().size(); ++faceIndex) {
-        const auto& face = editableMesh.faces()[faceIndex];
+    for (std::size_t faceIndex = 0; faceIndex < activeMesh->faces().size(); ++faceIndex) {
+        const auto& face = activeMesh->faces()[faceIndex];
         if (face.deleted || face.vertices.size() < 3U) continue;
         const GLsizei firstIndex = static_cast<GLsizei>(triangles.size());
         const auto first = static_cast<GLushort>(face.vertices[0]);
@@ -343,10 +344,10 @@ float pointSegmentDistance(float px, float py, Vec3 a, Vec3 b) {
 }
 
 int pickGizmoAxis(float x, float y) {
-    const auto center = editableMesh.selectionCenter(selectionMode);
+    const auto center = activeMesh->selectionCenter(selectionMode);
     if (!center) return -1;
     a3d::Vec3 objectPosition{};
-    if (const auto* object = editor.scene().find(cubeObjectId)) objectPosition = object->transform.position;
+    if (const auto* object = modelingScene.object(cubeObjectId)) objectPosition = object->transform.position;
     const Vec3 origin{objectPosition.x+center->x, objectPosition.y+center->y+1.0f, objectPosition.z+center->z};
     const auto screenOrigin=projectToScreen(origin);
     if (!screenOrigin) return -1;
@@ -364,7 +365,8 @@ int pickGizmoAxis(float x, float y) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeSurfaceCreated(JNIEnv*, jobject) {
-    if (cubeObjectId == 0) cubeObjectId = editor.scene().createObject();
+    if (cubeObjectId == 0) cubeObjectId = modelingScene.addPrimitive(a3d::PrimitiveType::Cube, "Cube");
+    activeMesh = modelingScene.mesh(cubeObjectId);
     createResources();
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -389,7 +391,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glBindVertexArray(gridVao);
     glDrawArrays(GL_LINES, 0, gridVertexCount);
     a3d::Vec3 position{};
-    if (const auto* cube = editor.scene().find(cubeObjectId)) position = cube->transform.position;
+    if (const auto* cube = modelingScene.object(cubeObjectId)) position = cube->transform.position;
     const Mat4 cubeMvp = multiply(viewProjection, translation(position.x, position.y, position.z));
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, cubeMvp.m);
     glBindVertexArray(cubeVao);
@@ -402,7 +404,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
             glEnable(GL_POLYGON_OFFSET_FILL);
             glPolygonOffset(-1.0f, -1.0f);
             for (const auto& range : faceDrawRanges) {
-                if (range.face < editableMesh.faces().size() && editableMesh.faces()[range.face].selected)
+                if (range.face < activeMesh->faces().size() && activeMesh->faces()[range.face].selected)
                     glDrawElements(GL_TRIANGLES, range.indexCount, GL_UNSIGNED_SHORT,
                         reinterpret_cast<void*>(static_cast<std::size_t>(range.firstIndex) * sizeof(GLushort)));
             }
@@ -411,14 +413,14 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubeEdgeEbo);
             glLineWidth(5.0f);
             for (const auto& edge : edgeDrawRanges) {
-                if (editableMesh.isEdgeSelected(edge.first, edge.second))
+                if (activeMesh->isEdgeSelected(edge.first, edge.second))
                     glDrawElements(GL_LINES, 2, GL_UNSIGNED_SHORT,
                         reinterpret_cast<void*>(static_cast<std::size_t>(edge.firstIndex) * sizeof(GLushort)));
             }
         } else {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-            for (std::size_t i = 0; i < editableMesh.vertices().size(); ++i)
-                if (editableMesh.vertices()[i].selected) glDrawArrays(GL_POINTS, static_cast<GLint>(i), 1);
+            for (std::size_t i = 0; i < activeMesh->vertices().size(); ++i)
+                if (activeMesh->vertices()[i].selected) glDrawArrays(GL_POINTS, static_cast<GLint>(i), 1);
         }
         glDisable(GL_CULL_FACE);
         glLineWidth(2.0f);
@@ -428,7 +430,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
         glUniform1i(overrideLocation, GL_FALSE);
         glEnable(GL_CULL_FACE);
 
-        if (const auto center = editableMesh.selectionCenter(selectionMode)) {
+        if (const auto center = activeMesh->selectionCenter(selectionMode)) {
             const Mat4 gizmoMvp = multiply(viewProjection,
                 translation(position.x + center->x, position.y + center->y + 1.0f, position.z + center->z));
             glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, gizmoMvp.m);
@@ -470,7 +472,7 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     glUseProgram(program);
     const Mat4 viewProjection = cameraMvp();
     a3d::Vec3 position{};
-    if (const auto* cube = editor.scene().find(cubeObjectId)) position = cube->transform.position;
+    if (const auto* cube = modelingScene.object(cubeObjectId)) position = cube->transform.position;
     const Mat4 mvp = multiply(viewProjection, translation(position.x, position.y, position.z));
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, mvp.m);
     glUniform1i(overrideLocation, GL_TRUE);
@@ -498,7 +500,7 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
         }
     } else {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-        for (std::size_t i = 0; i < editableMesh.vertices().size(); ++i) {
+        for (std::size_t i = 0; i < activeMesh->vertices().size(); ++i) {
             setPickColor(static_cast<std::uint32_t>(i) + 1U);
             glDrawArrays(GL_POINTS, static_cast<GLint>(i), 1);
         }
@@ -510,25 +512,25 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     const std::uint32_t encoded = static_cast<std::uint32_t>(pixel[0]) |
         (static_cast<std::uint32_t>(pixel[1]) << 8U) |
         (static_cast<std::uint32_t>(pixel[2]) << 16U);
-    if (!additiveSelection) editableMesh.clearSelection();
+    if (!additiveSelection) activeMesh->clearSelection();
     if (encoded > 0U) {
         const std::uint32_t picked = encoded - 1U;
-        if (selectionMode == a3d::SelectionMode::Face && picked < editableMesh.faces().size()) {
+        if (selectionMode == a3d::SelectionMode::Face && picked < activeMesh->faces().size()) {
             activeFace = static_cast<a3d::FaceId>(picked);
-            const bool next = additiveSelection ? !editableMesh.faces()[picked].selected : true;
-            (void)editableMesh.setFaceSelected(activeFace, next);
+            const bool next = additiveSelection ? !activeMesh->faces()[picked].selected : true;
+            (void)activeMesh->setFaceSelected(activeFace, next);
         } else if (selectionMode == a3d::SelectionMode::Edge && picked < edgeDrawRanges.size()) {
             const auto& edge = edgeDrawRanges[picked];
-            const bool next = additiveSelection ? !editableMesh.isEdgeSelected(edge.first, edge.second) : true;
-            (void)editableMesh.setEdgeSelected(edge.first, edge.second, next);
-        } else if (selectionMode == a3d::SelectionMode::Vertex && picked < editableMesh.vertices().size()) {
+            const bool next = additiveSelection ? !activeMesh->isEdgeSelected(edge.first, edge.second) : true;
+            (void)activeMesh->setEdgeSelected(edge.first, edge.second, next);
+        } else if (selectionMode == a3d::SelectionMode::Vertex && picked < activeMesh->vertices().size()) {
             const auto vertex = static_cast<a3d::VertexId>(picked);
-            const bool next = additiveSelection ? !editableMesh.vertices()[picked].selected : true;
-            (void)editableMesh.setVertexSelected(vertex, next);
+            const bool next = additiveSelection ? !activeMesh->vertices()[picked].selected : true;
+            (void)activeMesh->setVertexSelected(vertex, next);
         }
     }
     cubeSelected = hasMeshSelection();
-    editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
+    (void)modelingScene.selectObject(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, viewportWidth, viewportHeight);
     glUniform1i(overrideLocation, GL_FALSE);
@@ -543,47 +545,47 @@ Java_ai_arena_a3d_NativeRenderer_nativeBoxSelect(JNIEnv*, jobject, jfloat x1, jf
         return p && p->x>=left && p->x<=right && p->y>=top && p->y<=bottom;
     };
     a3d::Vec3 objectPosition{};
-    if (const auto* object=editor.scene().find(cubeObjectId)) objectPosition=object->transform.position;
+    if (const auto* object=modelingScene.object(cubeObjectId)) objectPosition=object->transform.position;
     const auto projectVertex=[&](a3d::VertexId id) {
-        const auto p=editableMesh.vertices()[id].position;
+        const auto p=activeMesh->vertices()[id].position;
         return projectToScreen({objectPosition.x+p.x,objectPosition.y+p.y+1.0f,objectPosition.z+p.z});
     };
-    if (!additiveSelection) editableMesh.clearSelection();
+    if (!additiveSelection) activeMesh->clearSelection();
     if (selectionMode==a3d::SelectionMode::Vertex) {
-        for (std::size_t i=0;i<editableMesh.vertices().size();++i)
+        for (std::size_t i=0;i<activeMesh->vertices().size();++i)
             if (inside(projectVertex(static_cast<a3d::VertexId>(i))))
-                (void)editableMesh.setVertexSelected(static_cast<a3d::VertexId>(i),true);
+                (void)activeMesh->setVertexSelected(static_cast<a3d::VertexId>(i),true);
     } else if (selectionMode==a3d::SelectionMode::Edge) {
         for (const auto& edge:edgeDrawRanges) {
             const auto a=projectVertex(edge.first), b=projectVertex(edge.second);
             if (a && b && inside(Vec3{(a->x+b->x)*0.5f,(a->y+b->y)*0.5f,0}))
-                (void)editableMesh.setEdgeSelected(edge.first,edge.second,true);
+                (void)activeMesh->setEdgeSelected(edge.first,edge.second,true);
         }
     } else {
-        for (std::size_t i=0;i<editableMesh.faces().size();++i) {
-            const auto& face=editableMesh.faces()[i];
+        for (std::size_t i=0;i<activeMesh->faces().size();++i) {
+            const auto& face=activeMesh->faces()[i];
             if (face.deleted) continue;
             Vec3 center{}; int count=0;
             for (const auto id:face.vertices) if (const auto p=projectVertex(id)) { center.x+=p->x; center.y+=p->y; ++count; }
-            if (count>0) { center.x/=count; center.y/=count; if (inside(center)) (void)editableMesh.setFaceSelected(static_cast<a3d::FaceId>(i),true); }
+            if (count>0) { center.x/=count; center.y/=count; if (inside(center)) (void)activeMesh->setFaceSelected(static_cast<a3d::FaceId>(i),true); }
         }
     }
     cubeSelected=hasMeshSelection();
-    editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
+    (void)modelingScene.selectObject(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
     return cubeSelected ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat amount) {
     if (!cubeSelected) return JNI_FALSE;
-    const auto* cube = editor.scene().find(cubeObjectId);
+    const auto* cube = modelingScene.object(cubeObjectId);
     if (!cube) return JNI_FALSE;
     a3d::Transform next = cube->transform;
     if (axis == 0) next.position.x += amount;
     else if (axis == 1) next.position.y += amount;
     else if (axis == 2) next.position.z += amount;
     else return JNI_FALSE;
-    if (!editor.applyTransform(cubeObjectId, next)) return JNI_FALSE;
+    if (!modelingScene.applyTransform(cubeObjectId, next)) return JNI_FALSE;
     recordAction(ActionKind::ObjectTransform);
     return JNI_TRUE;
 }
@@ -591,13 +593,13 @@ Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    editableMesh.clearSelection();
-    if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
-    const auto result = editableMesh.extrudeFace(activeFace, distance);
+    const a3d::EditableMesh before = *activeMesh;
+    activeMesh->clearSelection();
+    if (!activeMesh->setFaceSelected(activeFace, true)) return JNI_FALSE;
+    const auto result = activeMesh->extrudeFace(activeFace, distance);
     if (!result) return JNI_FALSE;
     activeFace = *result;
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -606,13 +608,13 @@ Java_ai_arena_a3d_NativeRenderer_nativeExtrude(JNIEnv*, jobject, jfloat distance
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    editableMesh.clearSelection();
-    if (!editableMesh.setFaceSelected(activeFace, true)) return JNI_FALSE;
-    const auto result = editableMesh.insetFace(activeFace, amount);
+    const a3d::EditableMesh before = *activeMesh;
+    activeMesh->clearSelection();
+    if (!activeMesh->setFaceSelected(activeFace, true)) return JNI_FALSE;
+    const auto result = activeMesh->insetFace(activeFace, amount);
     if (!result) return JNI_FALSE;
     activeFace = *result;
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -621,12 +623,12 @@ Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeFillFace(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Vertex) return JNI_FALSE;
-    const a3d::EditableMesh before=editableMesh;
-    const auto result=editableMesh.fillSelectedVertices();
+    const a3d::EditableMesh before=*activeMesh;
+    const auto result=activeMesh->fillSelectedVertices();
     if (!result) return JNI_FALSE;
     activeFace=*result;
     selectionMode=a3d::SelectionMode::Face;
-    if (!meshHistory.commit(before,editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before,*activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -635,11 +637,11 @@ Java_ai_arena_a3d_NativeRenderer_nativeFillFace(JNIEnv*, jobject) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeTriangulateFaces(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before=editableMesh;
-    const auto created=editableMesh.triangulateSelectedFaces();
+    const a3d::EditableMesh before=*activeMesh;
+    const auto created=activeMesh->triangulateSelectedFaces();
     if (created.empty()) return JNI_FALSE;
     activeFace=created.back();
-    if (!meshHistory.commit(before,editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before,*activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -648,11 +650,11 @@ Java_ai_arena_a3d_NativeRenderer_nativeTriangulateFaces(JNIEnv*, jobject) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDuplicateFaces(JNIEnv*, jobject, jfloat offset) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    const auto created = editableMesh.duplicateSelectedFaces({offset,0.0f,0.0f});
+    const a3d::EditableMesh before = *activeMesh;
+    const auto created = activeMesh->duplicateSelectedFaces({offset,0.0f,0.0f});
     if (created.empty()) return JNI_FALSE;
     activeFace = created.back();
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -661,9 +663,9 @@ Java_ai_arena_a3d_NativeRenderer_nativeDuplicateFaces(JNIEnv*, jobject, jfloat o
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeMergeVertices(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Vertex) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    if (!editableMesh.mergeSelectedVertices()) return JNI_FALSE;
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    const a3d::EditableMesh before = *activeMesh;
+    if (!activeMesh->mergeSelectedVertices()) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -672,11 +674,11 @@ Java_ai_arena_a3d_NativeRenderer_nativeMergeVertices(JNIEnv*, jobject) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeBevelFace(JNIEnv*, jobject, jfloat amount, jfloat depth) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    const auto result = editableMesh.bevelFace(activeFace, amount, depth);
+    const a3d::EditableMesh before = *activeMesh;
+    const auto result = activeMesh->bevelFace(activeFace, amount, depth);
     if (!result) return JNI_FALSE;
     activeFace = *result;
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -685,10 +687,10 @@ Java_ai_arena_a3d_NativeRenderer_nativeBevelFace(JNIEnv*, jobject, jfloat amount
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    if (!editableMesh.deleteFace(activeFace)) return JNI_FALSE;
+    const a3d::EditableMesh before = *activeMesh;
+    if (!activeMesh->deleteFace(activeFace)) return JNI_FALSE;
     syncActiveFace();
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -697,9 +699,9 @@ Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeFlipFace(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
-    const a3d::EditableMesh before = editableMesh;
-    if (!editableMesh.flipFace(activeFace)) return JNI_FALSE;
-    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    const a3d::EditableMesh before = *activeMesh;
+    if (!activeMesh->flipFace(activeFace)) return JNI_FALSE;
+    if (!meshHistory.commit(before, *activeMesh)) return JNI_FALSE;
     recordAction(ActionKind::MeshTopology);
     createCube();
     return JNI_TRUE;
@@ -710,7 +712,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeSetSelectionMode(JNIEnv*, jobject, jint m
     selectionMode = mode == 0 ? a3d::SelectionMode::Vertex
                   : mode == 1 ? a3d::SelectionMode::Edge
                               : a3d::SelectionMode::Face;
-    editableMesh.clearSelection();
+    activeMesh->clearSelection();
     cubeSelected = false;
 }
 
@@ -730,30 +732,30 @@ Java_ai_arena_a3d_NativeRenderer_nativeSetSnapping(JNIEnv*, jobject, jboolean en
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeSelectAll(JNIEnv*, jobject) {
-    editableMesh.selectAll(selectionMode);
+    activeMesh->selectAll(selectionMode);
     cubeSelected = true;
-    editor.select(cubeObjectId);
+    (void)modelingScene.selectObject(cubeObjectId);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeInvertSelection(JNIEnv*, jobject) {
-    editableMesh.invertSelection(selectionMode);
+    activeMesh->invertSelection(selectionMode);
     cubeSelected = hasMeshSelection();
-    editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
+    (void)modelingScene.selectObject(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeClearSelection(JNIEnv*, jobject) {
-    editableMesh.clearSelection();
+    activeMesh->clearSelection();
     cubeSelected = false;
-    editor.select(std::nullopt);
+    (void)modelingScene.selectObject(std::nullopt);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject, jfloat x, jfloat y, jint preferredAxis) {
-    if (transformBefore || !editableMesh.selectionCenter(selectionMode).has_value()) return JNI_FALSE;
+    if (transformBefore || !activeMesh->selectionCenter(selectionMode).has_value()) return JNI_FALSE;
     transformAxis = preferredAxis >= 0 && preferredAxis <= 2 ? preferredAxis : pickGizmoAxis(x, y);
-    transformBefore = editableMesh;
+    transformBefore = *activeMesh;
     transformChanged = false;
     rawMoveDelta = {}; appliedMoveDelta = {};
     rawTransformScalar = appliedTransformScalar = 0.0f;
@@ -763,7 +765,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject, jflo
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeTranslateSelection(JNIEnv*, jobject, jfloat x, jfloat y, jfloat z) {
-    if (!transformBefore || !editableMesh.translateSelected(selectionMode, {x, y, z})) return JNI_FALSE;
+    if (!transformBefore || !activeMesh->translateSelected(selectionMode, {x, y, z})) return JNI_FALSE;
     transformChanged = true;
     createCube();
     return JNI_TRUE;
@@ -785,7 +787,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeDragMeshTransform(JNIEnv*, jobject, jfloa
         : rawMoveDelta;
     const Vec3 delta{target.x-appliedMoveDelta.x,target.y-appliedMoveDelta.y,target.z-appliedMoveDelta.z};
     if (std::fabs(delta.x)+std::fabs(delta.y)+std::fabs(delta.z) < 0.00001f) return JNI_TRUE;
-    if (!editableMesh.translateSelected(selectionMode, {delta.x,delta.y,delta.z})) return JNI_FALSE;
+    if (!activeMesh->translateSelected(selectionMode, {delta.x,delta.y,delta.z})) return JNI_FALSE;
     appliedMoveDelta = target;
     transformChanged = true;
     createCube();
@@ -801,7 +803,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeDragRotateTransform(JNIEnv*, jobject, jfl
         ? std::round(rawTransformScalar/angleSnapRadians)*angleSnapRadians : rawTransformScalar;
     const float delta = target-appliedTransformScalar;
     if (std::fabs(delta) < 0.00001f) return JNI_TRUE;
-    if (!editableMesh.rotateSelected(selectionMode, axis, delta)) return JNI_FALSE;
+    if (!activeMesh->rotateSelected(selectionMode, axis, delta)) return JNI_FALSE;
     appliedTransformScalar = target;
     transformChanged = true;
     createCube();
@@ -821,7 +823,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeDragScaleTransform(JNIEnv*, jobject, jflo
                        : transformAxis == 1 ? Vec3{1,factor,1}
                        : transformAxis == 2 ? Vec3{1,1,factor}
                                             : Vec3{factor,factor,factor};
-    if (!editableMesh.scaleSelected(selectionMode, {factors.x,factors.y,factors.z})) return JNI_FALSE;
+    if (!activeMesh->scaleSelected(selectionMode, {factors.x,factors.y,factors.z})) return JNI_FALSE;
     appliedScaleFactor = targetFactor;
     transformChanged = true;
     createCube();
@@ -833,7 +835,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeEndMeshTransform(JNIEnv*, jobject) {
     if (!transformBefore) return JNI_FALSE;
     bool committed = false;
     if (transformChanged) {
-        committed = meshHistory.commit(*transformBefore, editableMesh);
+        committed = meshHistory.commit(*transformBefore, *activeMesh);
         if (committed) recordAction(ActionKind::MeshTopology);
     }
     transformBefore.reset();
@@ -845,7 +847,7 @@ Java_ai_arena_a3d_NativeRenderer_nativeEndMeshTransform(JNIEnv*, jobject) {
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeCancelMeshTransform(JNIEnv*, jobject) {
     if (transformBefore) {
-        editableMesh = *transformBefore;
+        *activeMesh = *transformBefore;
         createCube();
     }
     transformBefore.reset();
@@ -858,8 +860,8 @@ Java_ai_arena_a3d_NativeRenderer_nativeUndo(JNIEnv*, jobject) {
     if (undoActions.empty()) return JNI_FALSE;
     const ActionKind kind = undoActions.back();
     const bool changed = kind == ActionKind::MeshTopology
-        ? meshHistory.undo(editableMesh)
-        : editor.history().undo(editor.scene());
+        ? meshHistory.undo(*activeMesh)
+        : modelingScene.undoTransform();
     if (!changed) return JNI_FALSE;
     undoActions.pop_back();
     redoActions.push_back(kind);
@@ -872,8 +874,8 @@ Java_ai_arena_a3d_NativeRenderer_nativeRedo(JNIEnv*, jobject) {
     if (redoActions.empty()) return JNI_FALSE;
     const ActionKind kind = redoActions.back();
     const bool changed = kind == ActionKind::MeshTopology
-        ? meshHistory.redo(editableMesh)
-        : editor.history().redo(editor.scene());
+        ? meshHistory.redo(*activeMesh)
+        : modelingScene.redoTransform();
     if (!changed) return JNI_FALSE;
     redoActions.pop_back();
     undoActions.push_back(kind);

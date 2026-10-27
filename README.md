@@ -21,6 +21,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Procedural editable cube, plane, UV sphere, cylinder, and cone primitives
 - Multi-object `ModelingScene` core with per-object editable meshes, active object, duplicate, delete, and stable IDs
 - Scene-level transform undo/redo and Outliner-ready object summaries with names, state, primitive type, and mesh statistics
+- Native renderer state migrated from a standalone mesh/editor pair to `ModelingScene` with an active per-object mesh
 - Renderer geometry generated from `EditableMesh` instead of a hardcoded cube
 - Edit-mode extrusion rebuilds triangle and wireframe GPU buffers at runtime
 - Per-face GPU ID picking with active-face highlight
