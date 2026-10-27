@@ -63,6 +63,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(1) }) { Text("Edge") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(2) }) { Text("Face") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.toggleAdditiveSelection() }) { Text("Multi") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateBoxSelect() }) { Text("Box") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectAll() }) { Text("All") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.invertSelection() }) { Text("Invert") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.clearSelection() }) { Text("Clear") }
@@ -119,6 +120,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var moveAxis = -1
     private var snappingEnabled = false
     private var additiveSelection = false
+    private var boxSelectActive = false
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -167,7 +169,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                             2 -> queueEvent { NativeRenderer.nativeDragScaleTransform(dx, dy) }
                             else -> queueEvent { NativeRenderer.nativeDragMeshTransform(dx, dy) }
                         }
-                    } else {
+                    } else if (!boxSelectActive) {
                         queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
                     }
                     lastX = event.x
@@ -185,6 +187,9 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
             MotionEvent.ACTION_UP -> {
                 if (moveToolActive) {
                     queueEvent { NativeRenderer.nativeEndMeshTransform() }
+                } else if (boxSelectActive && moved) {
+                    val x1 = downX; val y1 = downY; val x2 = event.x; val y2 = event.y
+                    queueEvent { NativeRenderer.nativeBoxSelect(x1, y1, x2, y2) }
                 } else if (!moved) {
                     val x = event.x
                     val y = event.y
@@ -200,21 +205,29 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
 
     fun selectionMode(mode: Int) {
         moveToolActive = false
+        boxSelectActive = false
         moveAxis = -1
         queueEvent { NativeRenderer.nativeSetSelectionMode(mode) }
     }
+    fun activateBoxSelect() {
+        moveToolActive = false
+        boxSelectActive = true
+    }
     fun activateMoveTool(axis: Int) {
         moveToolActive = true
+        boxSelectActive = false
         transformTool = 0
         moveAxis = axis
     }
     fun activateRotateTool(axis: Int) {
         moveToolActive = true
+        boxSelectActive = false
         transformTool = 1
         moveAxis = axis
     }
     fun activateScaleTool(axis: Int) {
         moveToolActive = true
+        boxSelectActive = false
         transformTool = 2
         moveAxis = axis
     }
@@ -262,6 +275,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeZoom(scale: Float)
     external fun nativePan(dx: Float, dy: Float)
     external fun nativePick(x: Float, y: Float): Boolean
+    external fun nativeBoxSelect(x1: Float, y1: Float, x2: Float, y2: Float): Boolean
     external fun nativeSetSelectionMode(mode: Int)
     external fun nativeSetAdditiveSelection(enabled: Boolean)
     external fun nativeSetSnapping(enabled: Boolean, moveStep: Float, angleDegrees: Float, scaleStep: Float)

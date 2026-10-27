@@ -536,6 +536,44 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeBoxSelect(JNIEnv*, jobject, jfloat x1, jfloat y1, jfloat x2, jfloat y2) {
+    const float left=std::min(x1,x2), right=std::max(x1,x2);
+    const float top=std::min(y1,y2), bottom=std::max(y1,y2);
+    const auto inside=[&](const std::optional<Vec3>& p) {
+        return p && p->x>=left && p->x<=right && p->y>=top && p->y<=bottom;
+    };
+    a3d::Vec3 objectPosition{};
+    if (const auto* object=editor.scene().find(cubeObjectId)) objectPosition=object->transform.position;
+    const auto projectVertex=[&](a3d::VertexId id) {
+        const auto p=editableMesh.vertices()[id].position;
+        return projectToScreen({objectPosition.x+p.x,objectPosition.y+p.y+1.0f,objectPosition.z+p.z});
+    };
+    if (!additiveSelection) editableMesh.clearSelection();
+    if (selectionMode==a3d::SelectionMode::Vertex) {
+        for (std::size_t i=0;i<editableMesh.vertices().size();++i)
+            if (inside(projectVertex(static_cast<a3d::VertexId>(i))))
+                (void)editableMesh.setVertexSelected(static_cast<a3d::VertexId>(i),true);
+    } else if (selectionMode==a3d::SelectionMode::Edge) {
+        for (const auto& edge:edgeDrawRanges) {
+            const auto a=projectVertex(edge.first), b=projectVertex(edge.second);
+            if (a && b && inside(Vec3{(a->x+b->x)*0.5f,(a->y+b->y)*0.5f,0}))
+                (void)editableMesh.setEdgeSelected(edge.first,edge.second,true);
+        }
+    } else {
+        for (std::size_t i=0;i<editableMesh.faces().size();++i) {
+            const auto& face=editableMesh.faces()[i];
+            if (face.deleted) continue;
+            Vec3 center{}; int count=0;
+            for (const auto id:face.vertices) if (const auto p=projectVertex(id)) { center.x+=p->x; center.y+=p->y; ++count; }
+            if (count>0) { center.x/=count; center.y/=count; if (inside(center)) (void)editableMesh.setFaceSelected(static_cast<a3d::FaceId>(i),true); }
+        }
+    }
+    cubeSelected=hasMeshSelection();
+    editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
+    return cubeSelected ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeNudge(JNIEnv*, jobject, jint axis, jfloat amount) {
     if (!cubeSelected) return JNI_FALSE;
     const auto* cube = editor.scene().find(cubeObjectId);
