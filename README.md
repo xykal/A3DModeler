@@ -56,6 +56,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Face bevel using inset-ring topology plus normal-based depth offset, fully undoable
 - Fill Face from three or more selected vertices with planar ordering and automatic triangulation
 - Triangulate selected n-gons into selected triangle faces with topology history
+- Subdivide selected faces into center-fan polygons with selected results and undo/redo
 - Push/PR automation is verification-only; APK/AAB builds are manually gated until the modeling milestone is approved
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB

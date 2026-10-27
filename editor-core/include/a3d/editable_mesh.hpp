@@ -55,6 +55,7 @@ public:
     [[nodiscard]] std::optional<FaceId> fillSelectedVertices();
     [[nodiscard]] std::vector<FaceId> duplicateSelectedFaces(Vec3 offset);
     [[nodiscard]] std::vector<FaceId> triangulateSelectedFaces();
+    [[nodiscard]] std::vector<FaceId> subdivideSelectedFaces();
     [[nodiscard]] std::optional<FaceId> extrudeFace(FaceId face, float distance);
     [[nodiscard]] std::optional<FaceId> insetFace(FaceId face, float amount);
     [[nodiscard]] std::optional<FaceId> bevelFace(FaceId face, float insetAmount, float depth);

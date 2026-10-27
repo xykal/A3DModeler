@@ -263,6 +263,30 @@ std::vector<FaceId> EditableMesh::triangulateSelectedFaces() {
     return created;
 }
 
+std::vector<FaceId> EditableMesh::subdivideSelectedFaces() {
+    std::vector<FaceId> sourceIds;
+    for (std::size_t i=0;i<faces_.size();++i)
+        if (!faces_[i].deleted && faces_[i].selected) sourceIds.push_back(static_cast<FaceId>(i));
+    if (sourceIds.empty()) return {};
+    std::vector<std::vector<VertexId>> newFaces;
+    for (const FaceId id:sourceIds) {
+        const auto vertices=faces_[id].vertices;
+        Vec3 center{};
+        for (const auto vertex:vertices) { const auto p=vertices_[vertex].position; center.x+=p.x; center.y+=p.y; center.z+=p.z; }
+        const float inverse=1.0F/static_cast<float>(vertices.size());
+        const VertexId centerId=addVertex({center.x*inverse,center.y*inverse,center.z*inverse});
+        for (std::size_t i=0;i<vertices.size();++i)
+            newFaces.push_back({vertices[i],vertices[(i+1U)%vertices.size()],centerId});
+        faces_[id].deleted=true; faces_[id].selected=false;
+    }
+    std::vector<FaceId> created;
+    for (auto& vertices:newFaces) if (const auto face=addFace(std::move(vertices))) {
+        faces_[*face].selected=true; created.push_back(*face);
+    }
+    recalculateNormals();
+    return created;
+}
+
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     if (faceId >= faces_.size() || faces_[faceId].deleted) return std::nullopt;
     selectedEdges_.clear();

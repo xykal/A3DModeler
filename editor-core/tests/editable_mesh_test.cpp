@@ -203,6 +203,16 @@ int main() {
     assert(triangulateMesh.selectedFaceCount()==2);
     assert(triangulateMesh.triangulateSelectedFaces().empty());
 
+    auto subdivideMesh=a3d::EditableMesh::plane(2.0F);
+    assert(subdivideMesh.setFaceSelected(0,true));
+    const auto subdivisions=subdivideMesh.subdivideSelectedFaces();
+    assert(subdivisions.size()==4);
+    assert(subdivideMesh.validate());
+    assert(subdivideMesh.stats().vertices==5);
+    assert(subdivideMesh.stats().faces==4);
+    assert(subdivideMesh.stats().triangles==4);
+    assert(subdivideMesh.selectedFaceCount()==4);
+
     const auto sphere=a3d::EditableMesh::uvSphere(1.0F,8,4);
     assert(sphere.validate());
     assert(sphere.stats().vertices==26);
