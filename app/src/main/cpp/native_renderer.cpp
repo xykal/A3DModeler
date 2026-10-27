@@ -619,6 +619,17 @@ Java_ai_arena_a3d_NativeRenderer_nativeInset(JNIEnv*, jobject, jfloat amount) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeMergeVertices(JNIEnv*, jobject) {
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Vertex) return JNI_FALSE;
+    const a3d::EditableMesh before = editableMesh;
+    if (!editableMesh.mergeSelectedVertices()) return JNI_FALSE;
+    if (!meshHistory.commit(before, editableMesh)) return JNI_FALSE;
+    recordAction(ActionKind::MeshTopology);
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = editableMesh;

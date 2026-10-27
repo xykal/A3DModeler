@@ -40,6 +40,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Toggleable transform snapping: 0.25-unit move, 15-degree rotate, and 0.1 scale increments
 - Additive multi-selection with tap-to-toggle for vertices, topology edges, and faces
 - Drag-box selection for vertex, edge-midpoint, and face-centroid workflows
+- Merge selected vertices at their shared center with face cleanup and topology undo/redo
 - Push/PR automation is verification-only; APK/AAB builds are manually gated until the modeling milestone is approved
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB

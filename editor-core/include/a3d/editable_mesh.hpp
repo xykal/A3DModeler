@@ -48,6 +48,7 @@ public:
     [[nodiscard]] std::optional<FaceId> addFace(std::vector<VertexId> vertices);
     [[nodiscard]] bool deleteFace(FaceId face);
     [[nodiscard]] bool flipFace(FaceId face);
+    [[nodiscard]] std::optional<VertexId> mergeSelectedVertices();
     [[nodiscard]] std::optional<FaceId> extrudeFace(FaceId face, float distance);
     [[nodiscard]] std::optional<FaceId> insetFace(FaceId face, float amount);
     [[nodiscard]] bool setVertexSelected(VertexId vertex, bool selected);

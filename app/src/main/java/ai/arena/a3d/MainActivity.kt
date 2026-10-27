@@ -79,6 +79,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(0) }) { Text("Scale X") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(1) }) { Text("Scale Y") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(2) }) { Text("Scale Z") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.mergeVertices() }) { Text("Merge") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.flipFace() }) { Text("Flip") }
@@ -247,6 +248,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun nudge(axis: Int, amount: Float) = queueEvent { NativeRenderer.nativeNudge(axis, amount) }
     fun extrude(distance: Float) = queueEvent { NativeRenderer.nativeExtrude(distance) }
     fun inset(amount: Float) = queueEvent { NativeRenderer.nativeInset(amount) }
+    fun mergeVertices() = queueEvent { NativeRenderer.nativeMergeVertices() }
     fun deleteFace() = queueEvent { NativeRenderer.nativeDeleteFace() }
     fun flipFace() = queueEvent { NativeRenderer.nativeFlipFace() }
     fun undo() = queueEvent { NativeRenderer.nativeUndo() }
@@ -292,6 +294,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeNudge(axis: Int, amount: Float): Boolean
     external fun nativeExtrude(distance: Float): Boolean
     external fun nativeInset(amount: Float): Boolean
+    external fun nativeMergeVertices(): Boolean
     external fun nativeDeleteFace(): Boolean
     external fun nativeFlipFace(): Boolean
     external fun nativeUndo(): Boolean

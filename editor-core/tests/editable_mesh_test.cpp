@@ -140,5 +140,17 @@ int main() {
     const auto centerAfterScale = transformMesh.selectionCenter(a3d::SelectionMode::Vertex);
     assert(centerBefore->nearlyEquals(*centerAfterScale));
     assert(!transformMesh.scaleSelected(a3d::SelectionMode::Vertex, {0.0F, 1.0F, 1.0F}));
+
+    auto mergeMesh = a3d::EditableMesh::cube();
+    assert(!mergeMesh.mergeSelectedVertices().has_value());
+    assert(mergeMesh.setVertexSelected(0, true));
+    assert(mergeMesh.setVertexSelected(1, true));
+    const auto merged = mergeMesh.mergeSelectedVertices();
+    assert(merged.has_value() && *merged == 0);
+    assert(mergeMesh.validate());
+    assert(mergeMesh.selectedVertexCount() == 1);
+    assert(mergeMesh.vertices()[0].position.nearlyEquals({0.0F, -1.0F, -1.0F}));
+    assert(mergeMesh.stats().faces == 6);
+    assert(mergeMesh.stats().triangles == 10);
     return 0;
 }

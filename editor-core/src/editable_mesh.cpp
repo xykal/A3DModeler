@@ -72,6 +72,34 @@ bool EditableMesh::flipFace(FaceId face) {
     return true;
 }
 
+std::optional<VertexId> EditableMesh::mergeSelectedVertices() {
+    const auto selected = selectedVertexIds(SelectionMode::Vertex);
+    if (selected.size() < 2U) return std::nullopt;
+    const VertexId target = *selected.begin();
+    Vec3 center{};
+    for (const VertexId id : selected) {
+        center.x += vertices_[id].position.x;
+        center.y += vertices_[id].position.y;
+        center.z += vertices_[id].position.z;
+    }
+    const float inverse = 1.0F / static_cast<float>(selected.size());
+    vertices_[target].position = {center.x*inverse, center.y*inverse, center.z*inverse};
+
+    for (auto& face : faces_) {
+        if (face.deleted) continue;
+        for (auto& id : face.vertices) if (selected.contains(id)) id = target;
+        std::vector<VertexId> unique;
+        std::set<VertexId> seen;
+        for (const VertexId id : face.vertices) if (seen.insert(id).second) unique.push_back(id);
+        face.vertices = std::move(unique);
+        if (face.vertices.size() < 3U) { face.deleted = true; face.selected = false; }
+    }
+    clearSelection();
+    vertices_[target].selected = true;
+    recalculateNormals();
+    return target;
+}
+
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     if (faceId >= faces_.size() || faces_[faceId].deleted) return std::nullopt;
     selectedEdges_.clear();
