@@ -152,5 +152,16 @@ int main() {
     assert(mergeMesh.vertices()[0].position.nearlyEquals({0.0F, -1.0F, -1.0F}));
     assert(mergeMesh.stats().faces == 6);
     assert(mergeMesh.stats().triangles == 10);
+
+    auto duplicateMesh = a3d::EditableMesh::cube();
+    assert(duplicateMesh.duplicateSelectedFaces({1.0F,0.0F,0.0F}).empty());
+    assert(duplicateMesh.setFaceSelected(0,true));
+    assert(duplicateMesh.setFaceSelected(2,true));
+    const auto duplicatedFaces = duplicateMesh.duplicateSelectedFaces({0.5F,0.0F,0.0F});
+    assert(duplicatedFaces.size() == 2);
+    assert(duplicateMesh.validate());
+    assert(duplicateMesh.stats().vertices == 14);
+    assert(duplicateMesh.stats().faces == 8);
+    assert(duplicateMesh.selectedFaceCount() == 2);
     return 0;
 }

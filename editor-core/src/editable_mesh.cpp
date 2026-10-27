@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
+#include <unordered_map>
 #include <utility>
 
 namespace a3d {
@@ -98,6 +99,35 @@ std::optional<VertexId> EditableMesh::mergeSelectedVertices() {
     vertices_[target].selected = true;
     recalculateNormals();
     return target;
+}
+
+std::vector<FaceId> EditableMesh::duplicateSelectedFaces(Vec3 offset) {
+    std::vector<MeshFace> sources;
+    for (const auto& face : faces_) if (!face.deleted && face.selected) sources.push_back(face);
+    if (sources.empty()) return {};
+
+    std::unordered_map<VertexId, VertexId> duplicates;
+    for (const auto& face : sources) {
+        for (const VertexId oldId : face.vertices) {
+            if (duplicates.contains(oldId)) continue;
+            const Vec3 p = vertices_[oldId].position;
+            duplicates.emplace(oldId, addVertex({p.x+offset.x,p.y+offset.y,p.z+offset.z}));
+        }
+    }
+    clearSelection();
+    std::vector<FaceId> created;
+    created.reserve(sources.size());
+    for (const auto& source : sources) {
+        std::vector<VertexId> vertices;
+        vertices.reserve(source.vertices.size());
+        for (const VertexId oldId : source.vertices) vertices.push_back(duplicates.at(oldId));
+        if (const auto face = addFace(std::move(vertices))) {
+            faces_[*face].selected = true;
+            created.push_back(*face);
+        }
+    }
+    recalculateNormals();
+    return created;
 }
 
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
