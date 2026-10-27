@@ -5,6 +5,7 @@ add_library(a3d_editor_core STATIC
     src/editor_core.cpp
     src/editable_mesh.cpp
     src/modeling_scene.cpp
+    src/project_io.cpp
 )
 target_include_directories(a3d_editor_core PUBLIC include)
 target_compile_features(a3d_editor_core PUBLIC cxx_std_20)
@@ -23,4 +24,8 @@ if(NOT ANDROID)
     add_executable(a3d_modeling_scene_test tests/modeling_scene_test.cpp)
     target_link_libraries(a3d_modeling_scene_test PRIVATE a3d_editor_core)
     add_test(NAME modeling_scene COMMAND a3d_modeling_scene_test)
+
+    add_executable(a3d_project_io_test tests/project_io_test.cpp)
+    target_link_libraries(a3d_project_io_test PRIVATE a3d_editor_core)
+    add_test(NAME project_io COMMAND a3d_project_io_test)
 endif()
