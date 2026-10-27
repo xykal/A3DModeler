@@ -59,6 +59,13 @@ private fun EditorScreen() {
                     .horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(0) }) { Text("+Cube") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(1) }) { Text("+Plane") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(2) }) { Text("+Sphere") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(3) }) { Text("+Cylinder") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(4) }) { Text("+Cone") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.duplicateObject() }) { Text("Dup Obj") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.deleteObject() }) { Text("Del Obj") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(0) }) { Text("Vertex") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(1) }) { Text("Edge") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(2) }) { Text("Face") }
@@ -208,6 +215,10 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         return true
     }
 
+    fun addPrimitive(type: Int) = queueEvent { NativeRenderer.nativeAddPrimitive(type) }
+    fun duplicateObject() = queueEvent { NativeRenderer.nativeDuplicateObject() }
+    fun deleteObject() = queueEvent { NativeRenderer.nativeDeleteObject() }
+
     fun selectionMode(mode: Int) {
         moveToolActive = false
         boxSelectActive = false
@@ -280,6 +291,11 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     init { System.loadLibrary("a3d_core") }
     external fun nativeSurfaceCreated()
     external fun nativeSurfaceChanged(width: Int, height: Int)
+    external fun nativeAddPrimitive(type: Int): Long
+    external fun nativeSelectObject(id: Long): Boolean
+    external fun nativeDuplicateObject(): Long
+    external fun nativeDeleteObject(): Boolean
+    external fun nativeSceneSummary(): String
     external fun nativeDrawFrame()
     external fun nativeOrbit(dx: Float, dy: Float)
     external fun nativeZoom(scale: Float)

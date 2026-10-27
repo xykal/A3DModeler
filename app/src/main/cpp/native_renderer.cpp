@@ -8,6 +8,7 @@
 #include <array>
 #include <set>
 #include <cmath>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -261,6 +262,20 @@ void createCube() {
     glBindVertexArray(0);
 }
 
+bool activateObject(a3d::ObjectId id) {
+    auto* mesh=modelingScene.mesh(id);
+    if (!mesh || !modelingScene.selectObject(id)) return false;
+    cubeObjectId=id;
+    activeMesh=mesh;
+    meshHistory.clear();
+    undoActions.clear(); redoActions.clear();
+    transformBefore.reset(); transformChanged=false; transformAxis=-1;
+    cubeSelected=hasMeshSelection();
+    syncActiveFace();
+    createCube();
+    return true;
+}
+
 void createPickTarget(int width, int height) {
     if (pickDepth) glDeleteRenderbuffers(1, &pickDepth);
     if (pickColor) glDeleteTextures(1, &pickColor);
@@ -378,6 +393,56 @@ Java_ai_arena_a3d_NativeRenderer_nativeSurfaceChanged(JNIEnv*, jobject, jint wid
     viewportWidth = width; viewportHeight = height;
     glViewport(0, 0, width, height);
     createPickTarget(width, height);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeAddPrimitive(JNIEnv*, jobject, jint type) {
+    const auto primitive=type==1?a3d::PrimitiveType::Plane:type==2?a3d::PrimitiveType::UVSphere:
+        type==3?a3d::PrimitiveType::Cylinder:type==4?a3d::PrimitiveType::Cone:a3d::PrimitiveType::Cube;
+    const char* name=type==1?"Plane":type==2?"Sphere":type==3?"Cylinder":type==4?"Cone":"Cube";
+    const auto id=modelingScene.addPrimitive(primitive,name);
+    if (auto* object=modelingScene.object(id)) object->transform.position.x=
+        static_cast<float>(modelingScene.objectIds().size()-1U)*2.5f;
+    if (!activateObject(id)) return 0;
+    return static_cast<jlong>(id);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSelectObject(JNIEnv*, jobject, jlong id) {
+    return activateObject(static_cast<a3d::ObjectId>(id))?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDuplicateObject(JNIEnv*, jobject) {
+    const auto copy=modelingScene.duplicateObject(cubeObjectId);
+    if (!copy) return 0;
+    if (auto* object=modelingScene.object(*copy)) object->transform.position.x+=1.0f;
+    if (!activateObject(*copy)) return 0;
+    return static_cast<jlong>(*copy);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDeleteObject(JNIEnv*, jobject) {
+    if (modelingScene.objectIds().size()<=1U) return JNI_FALSE;
+    const auto deleting=cubeObjectId;
+    if (!modelingScene.removeObject(deleting)) return JNI_FALSE;
+    const auto active=modelingScene.activeObject();
+    return active && activateObject(*active)?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSceneSummary(JNIEnv* env, jobject) {
+    std::ostringstream output;
+    bool first=true;
+    for (const auto& item:modelingScene.summaries()) {
+        if (!first) output<<'\n';
+        first=false;
+        output<<item.id<<'|'<<item.name<<'|'<<static_cast<int>(item.primitive)<<'|'
+              <<item.visible<<'|'<<item.locked<<'|'<<item.active<<'|'
+              <<item.meshStats.vertices<<'|'<<item.meshStats.edges<<'|'
+              <<item.meshStats.faces<<'|'<<item.meshStats.triangles;
+    }
+    return env->NewStringUTF(output.str().c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
