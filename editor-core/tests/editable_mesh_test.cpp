@@ -233,6 +233,18 @@ int main() {
     assert(edgeDissolveMesh.selectedFaceCount()==1);
     assert(!edgeDissolveMesh.dissolveSelectedEdge().has_value());
 
+    auto edgeSplitMesh=a3d::EditableMesh::cube();
+    assert(edgeSplitMesh.setEdgeSelected(0,1,true));
+    const auto midpoint=edgeSplitMesh.splitSelectedEdge();
+    assert(midpoint.has_value());
+    assert(edgeSplitMesh.validate());
+    assert(edgeSplitMesh.stats().vertices==9);
+    assert(edgeSplitMesh.stats().faces==6);
+    assert(edgeSplitMesh.selectedVertexCount()==1);
+    const auto midpointPosition=edgeSplitMesh.vertices()[*midpoint].position;
+    assert(midpointPosition.nearlyEquals({0.0F,-1.0F,-1.0F}));
+    assert(!edgeSplitMesh.splitSelectedEdge().has_value());
+
     auto extractMesh=a3d::EditableMesh::cube();
     assert(extractMesh.setFaceSelected(0,true));
     auto extracted=extractMesh.extractSelectedFaces();

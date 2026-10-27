@@ -359,6 +359,31 @@ std::optional<FaceId> EditableMesh::dissolveSelectedEdge() {
     return dissolveSelectedFaces();
 }
 
+std::optional<VertexId> EditableMesh::splitSelectedEdge(float factor) {
+    if (selectedEdges_.size()!=1U || factor<=0.0F || factor>=1.0F) return std::nullopt;
+    const auto edge=*selectedEdges_.begin();
+    std::size_t occurrences=0;
+    for (const auto& face:faces_) if (!face.deleted)
+        for (std::size_t i=0;i<face.vertices.size();++i)
+            if (orderedEdge(face.vertices[i],face.vertices[(i+1U)%face.vertices.size()])==edge) ++occurrences;
+    if (occurrences==0U) return std::nullopt;
+    const Vec3 first=vertices_[edge.first].position,second=vertices_[edge.second].position;
+    const VertexId midpoint=addVertex({first.x+(second.x-first.x)*factor,
+                                       first.y+(second.y-first.y)*factor,
+                                       first.z+(second.z-first.z)*factor});
+    for (auto& face:faces_) if (!face.deleted) {
+        for (std::size_t i=0;i<face.vertices.size();++i) {
+            if (orderedEdge(face.vertices[i],face.vertices[(i+1U)%face.vertices.size()])==edge) {
+                face.vertices.insert(face.vertices.begin()+static_cast<std::ptrdiff_t>(i+1U),midpoint);
+                break;
+            }
+        }
+    }
+    clearSelection(); vertices_[midpoint].selected=true;
+    recalculateNormals();
+    return midpoint;
+}
+
 std::unique_ptr<EditableMesh> EditableMesh::extractSelectedFaces() {
     std::vector<FaceId> sources;
     for (std::size_t i=0;i<faces_.size();++i)

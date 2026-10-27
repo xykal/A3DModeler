@@ -214,6 +214,7 @@ private fun EditorScreen(
                 TextButton(onClick = { EditorViewportRegistry.viewport?.subdivideFaces() }) { Text("Subdivide") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.dissolveFaces() }) { Text("Dissolve Faces") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.dissolveEdge() }) { Text("Dissolve Edge") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.splitEdge() }) { Text("Split Edge") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.bevelFace() }) { Text("Bevel") }
@@ -508,6 +509,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun subdivideFaces() = queueEvent { NativeRenderer.nativeSubdivideFaces() }
     fun dissolveFaces() = queueEvent { NativeRenderer.nativeDissolveFaces() }
     fun dissolveEdge() = queueEvent { NativeRenderer.nativeDissolveEdge() }
+    fun splitEdge() = queueEvent { NativeRenderer.nativeSplitEdge(0.5f) }
     fun bevelFace() = queueEvent { NativeRenderer.nativeBevelFace(0.2f, 0.15f) }
     fun separateFaces() = queueEvent {
         NativeRenderer.nativeSeparateFaces(); emitSceneFromGlThread()
@@ -577,6 +579,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeSubdivideFaces(): Boolean
     external fun nativeDissolveFaces(): Boolean
     external fun nativeDissolveEdge(): Boolean
+    external fun nativeSplitEdge(factor: Float): Boolean
     external fun nativeBevelFace(amount: Float, depth: Float): Boolean
     external fun nativeSeparateFaces(): Boolean
     external fun nativeDeleteFace(): Boolean
