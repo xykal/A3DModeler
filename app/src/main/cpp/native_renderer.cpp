@@ -10,6 +10,7 @@
 #include <cmath>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -21,6 +22,7 @@ struct Vertex { float x, y, z, r, g, b; };
 struct Vec3 { float x, y, z; };
 struct FaceDrawRange { a3d::FaceId face; GLsizei firstIndex; GLsizei indexCount; };
 struct EdgeDrawRange { a3d::VertexId first; a3d::VertexId second; GLsizei firstIndex; };
+struct SceneGpuMesh { GLuint vao{}; GLuint vbo{}; GLuint ebo{}; GLsizei indexCount{}; };
 
 GLuint program = 0;
 GLuint gridVao = 0, gridVbo = 0;
@@ -55,6 +57,7 @@ a3d::FaceId activeFace = 4;
 a3d::SelectionMode selectionMode = a3d::SelectionMode::Face;
 std::vector<FaceDrawRange> faceDrawRanges;
 std::vector<EdgeDrawRange> edgeDrawRanges;
+std::unordered_map<a3d::ObjectId, SceneGpuMesh> sceneGpuMeshes;
 int viewportWidth = 1, viewportHeight = 1;
 float yaw = 0.75f, pitch = 0.48f, distanceToTarget = 6.5f;
 Vec3 cameraTarget {0.0f, 1.0f, 0.0f};
@@ -147,6 +150,46 @@ void bindMesh(GLuint& vao, GLuint& vbo, const void* vertices, size_t bytes) {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
+}
+
+void destroySceneGpuMesh(SceneGpuMesh& gpu) {
+    if (gpu.ebo) glDeleteBuffers(1,&gpu.ebo);
+    if (gpu.vbo) glDeleteBuffers(1,&gpu.vbo);
+    if (gpu.vao) glDeleteVertexArrays(1,&gpu.vao);
+    gpu={};
+}
+
+SceneGpuMesh uploadSceneMesh(const a3d::EditableMesh& mesh) {
+    SceneGpuMesh gpu;
+    if (mesh.vertices().size()>65535U) return gpu;
+    std::vector<Vertex> vertices;
+    vertices.reserve(mesh.vertices().size());
+    for (const auto& vertex:mesh.vertices())
+        vertices.push_back({vertex.position.x,vertex.position.y+1.0f,vertex.position.z,0.32f,0.48f,0.82f});
+    std::vector<GLushort> indices;
+    for (const auto& face:mesh.faces()) {
+        if (face.deleted || face.vertices.size()<3U) continue;
+        for (std::size_t i=1;i+1<face.vertices.size();++i) {
+            indices.push_back(static_cast<GLushort>(face.vertices[0]));
+            indices.push_back(static_cast<GLushort>(face.vertices[i]));
+            indices.push_back(static_cast<GLushort>(face.vertices[i+1]));
+        }
+    }
+    if (vertices.empty() || indices.empty()) return gpu;
+    bindMesh(gpu.vao,gpu.vbo,vertices.data(),vertices.size()*sizeof(Vertex));
+    glGenBuffers(1,&gpu.ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,gpu.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,static_cast<GLsizeiptr>(indices.size()*sizeof(GLushort)),indices.data(),GL_STATIC_DRAW);
+    gpu.indexCount=static_cast<GLsizei>(indices.size());
+    glBindVertexArray(0);
+    return gpu;
+}
+
+void refreshSceneGpuMeshes() {
+    for (auto& [id,gpu]:sceneGpuMeshes) { (void)id; destroySceneGpuMesh(gpu); }
+    sceneGpuMeshes.clear();
+    for (const auto id:modelingScene.objectIds())
+        if (const auto* mesh=modelingScene.mesh(id)) sceneGpuMeshes.emplace(id,uploadSceneMesh(*mesh));
 }
 
 void createGrid() {
@@ -265,6 +308,7 @@ void createCube() {
 bool activateObject(a3d::ObjectId id) {
     auto* mesh=modelingScene.mesh(id);
     if (!mesh || !modelingScene.selectObject(id)) return false;
+    refreshSceneGpuMeshes();
     cubeObjectId=id;
     activeMesh=mesh;
     meshHistory.clear();
@@ -298,6 +342,8 @@ void createPickTarget(int width, int height) {
 }
 
 void releaseResources() {
+    for (auto& [id,gpu]:sceneGpuMeshes) { (void)id; destroySceneGpuMesh(gpu); }
+    sceneGpuMeshes.clear();
     if (pickDepth) glDeleteRenderbuffers(1, &pickDepth);
     if (pickColor) glDeleteTextures(1, &pickColor);
     if (pickFbo) glDeleteFramebuffers(1, &pickFbo);
@@ -327,6 +373,7 @@ void createResources() {
     createGrid();
     createGizmo();
     createCube();
+    refreshSceneGpuMeshes();
 }
 
 Mat4 cameraMvp() {
@@ -455,6 +502,20 @@ Java_ai_arena_a3d_NativeRenderer_nativeDrawFrame(JNIEnv*, jobject) {
     glUniform1i(overrideLocation, GL_FALSE);
     glBindVertexArray(gridVao);
     glDrawArrays(GL_LINES, 0, gridVertexCount);
+    for (const auto id:modelingScene.objectIds()) {
+        if (id==cubeObjectId) continue;
+        const auto* object=modelingScene.object(id);
+        const auto found=sceneGpuMeshes.find(id);
+        if (!object || !object->visible || found==sceneGpuMeshes.end() || !found->second.vao) continue;
+        const auto& gpu=found->second;
+        const Mat4 objectMvp=multiply(viewProjection,translation(object->transform.position.x,
+            object->transform.position.y,object->transform.position.z));
+        glUniformMatrix4fv(mvpLocation,1,GL_FALSE,objectMvp.m);
+        glUniform1i(overrideLocation,GL_FALSE);
+        glBindVertexArray(gpu.vao);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,gpu.ebo);
+        glDrawElements(GL_TRIANGLES,gpu.indexCount,GL_UNSIGNED_SHORT,nullptr);
+    }
     a3d::Vec3 position{};
     if (const auto* cube = modelingScene.object(cubeObjectId)) position = cube->transform.position;
     const Mat4 cubeMvp = multiply(viewProjection, translation(position.x, position.y, position.z));
