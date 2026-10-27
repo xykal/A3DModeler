@@ -25,6 +25,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - JNI scene bridge for Add Primitive, active-object switching, object duplicate/delete, and Outliner summary data
 - Scrollable Add Cube/Plane/Sphere/Cylinder/Cone object controls
 - Per-object GPU mesh cache rendering every visible scene object while the active object retains editable selection buffers
+- Adaptive Compose Outliner: tablet side panel and phone horizontal object strip with active state and live mesh statistics
 - Renderer geometry generated from `EditableMesh` instead of a hardcoded cube
 - Edit-mode extrusion rebuilds triangle and wireframe GPU buffers at runtime
 - Per-face GPU ID picking with active-face highlight

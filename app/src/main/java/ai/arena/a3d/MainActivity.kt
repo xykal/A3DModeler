@@ -12,7 +12,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,9 +36,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private data class OutlinerItem(
+    val id: Long, val name: String, val primitive: Int, val visible: Boolean,
+    val locked: Boolean, val active: Boolean, val vertices: Int, val edges: Int,
+    val faces: Int, val triangles: Int
+)
+
+private fun parseSceneSummary(summary: String): List<OutlinerItem> = summary.lineSequence().mapNotNull { line ->
+    val p = line.split('|')
+    if (p.size != 10) null else runCatching {
+        OutlinerItem(p[0].toLong(), p[1], p[2].toInt(), p[3] == "1", p[4] == "1",
+            p[5] == "1", p[6].toInt(), p[7].toInt(), p[8].toInt(), p[9].toInt())
+    }.getOrNull()
+}.toList()
+
 @Composable
 private fun EditorScreen() {
     var mode by remember { mutableStateOf("Object") }
+    var outlinerItems by remember { mutableStateOf(emptyList<OutlinerItem>()) }
     Scaffold(
         topBar = {
             Surface(color = Color(0xFF202329), tonalElevation = 4.dp) {
@@ -100,18 +120,67 @@ private fun EditorScreen() {
             }
         }
     ) { padding ->
-        NativeViewport(Modifier.fillMaxSize().padding(padding))
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            if (maxWidth >= 700.dp) {
+                Row(Modifier.fillMaxSize()) {
+                    NativeViewport(Modifier.weight(1f).fillMaxHeight()) { outlinerItems = parseSceneSummary(it) }
+                    OutlinerPanel(outlinerItems, Modifier.width(260.dp).fillMaxHeight())
+                }
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    OutlinerStrip(outlinerItems, Modifier.fillMaxWidth().height(54.dp))
+                    NativeViewport(Modifier.weight(1f).fillMaxWidth()) { outlinerItems = parseSceneSummary(it) }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun NativeViewport(modifier: Modifier = Modifier) {
+private fun OutlinerPanel(sceneItems: List<OutlinerItem>, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Color(0xFF1B1E24), tonalElevation = 3.dp) {
+        Column(Modifier.padding(8.dp)) {
+            Text("OUTLINER", style = MaterialTheme.typography.labelMedium, color = Color(0xFF8E939E))
+            Spacer(Modifier.height(6.dp))
+            LazyColumn { items(sceneItems, key = { it.id }) { OutlinerEntry(it, Modifier.fillMaxWidth()) } }
+        }
+    }
+}
+
+@Composable
+private fun OutlinerStrip(sceneItems: List<OutlinerItem>, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Color(0xFF1B1E24)) {
+        LazyRow(contentPadding = PaddingValues(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            items(sceneItems, key = { it.id }) { OutlinerEntry(it, Modifier.width(150.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun OutlinerEntry(item: OutlinerItem, modifier: Modifier = Modifier) {
+    val borderColor = if (item.active) Color(0xFF7C9CFF) else Color.Transparent
+    Column(modifier.padding(3.dp).border(1.dp, borderColor, MaterialTheme.shapes.small)
+        .clickable { EditorViewportRegistry.viewport?.selectObject(item.id) }.padding(7.dp)) {
+        Text(item.name, color = if (item.active) Color(0xFFAFC0FF) else Color(0xFFD6D8DE),
+            style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        Text("V ${item.vertices}  E ${item.edges}  F ${item.faces}  T ${item.triangles}",
+            color = Color(0xFF858B96), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
+}
+
+@Composable
+private fun NativeViewport(modifier: Modifier = Modifier, onSceneChanged: (String) -> Unit) {
     AndroidView(
         modifier = modifier,
         factory = { context ->
             checkOpenGles31(context)
-            EditorGLSurfaceView(context).also { EditorViewportRegistry.viewport = it }
-        }
+            EditorGLSurfaceView(context).also {
+                EditorViewportRegistry.viewport = it
+                it.setSceneListener(onSceneChanged)
+                it.postDelayed({ it.refreshScene() }, 500)
+            }
+        },
+        update = { it.setSceneListener(onSceneChanged) }
     )
 }
 
@@ -133,6 +202,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var snappingEnabled = false
     private var additiveSelection = false
     private var boxSelectActive = false
+    private var sceneListener: ((String) -> Unit)? = null
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -215,9 +285,24 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         return true
     }
 
-    fun addPrimitive(type: Int) = queueEvent { NativeRenderer.nativeAddPrimitive(type) }
-    fun duplicateObject() = queueEvent { NativeRenderer.nativeDuplicateObject() }
-    fun deleteObject() = queueEvent { NativeRenderer.nativeDeleteObject() }
+    fun setSceneListener(listener: (String) -> Unit) { sceneListener = listener }
+    private fun emitSceneFromGlThread() {
+        val summary = NativeRenderer.nativeSceneSummary()
+        post { sceneListener?.invoke(summary) }
+    }
+    fun refreshScene() = queueEvent { emitSceneFromGlThread() }
+    fun addPrimitive(type: Int) = queueEvent {
+        NativeRenderer.nativeAddPrimitive(type); emitSceneFromGlThread()
+    }
+    fun selectObject(id: Long) = queueEvent {
+        NativeRenderer.nativeSelectObject(id); emitSceneFromGlThread()
+    }
+    fun duplicateObject() = queueEvent {
+        NativeRenderer.nativeDuplicateObject(); emitSceneFromGlThread()
+    }
+    fun deleteObject() = queueEvent {
+        NativeRenderer.nativeDeleteObject(); emitSceneFromGlThread()
+    }
 
     fun selectionMode(mode: Int) {
         moveToolActive = false
