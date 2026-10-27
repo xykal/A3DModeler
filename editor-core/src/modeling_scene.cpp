@@ -30,6 +30,22 @@ std::optional<ObjectId> ModelingScene::duplicateObject(ObjectId sourceId) {
     return duplicate;
 }
 
+std::optional<ObjectId> ModelingScene::separateSelectedFaces(ObjectId sourceId) {
+    auto* sourceMesh=mesh(sourceId);
+    const auto* sourceObject=object(sourceId);
+    if (!sourceMesh || !sourceObject) return std::nullopt;
+    const PrimitiveType primitive=sourceObject->primitive;
+    const Transform transform=sourceObject->transform;
+    const std::string name=sourceObject->name+" Part";
+    auto extracted=sourceMesh->extractSelectedFaces();
+    if (!extracted) return std::nullopt;
+    const ObjectId id=addPrimitive(primitive,name);
+    *mesh(id)=std::move(*extracted);
+    object(id)->transform=transform;
+    activeObject_=id;
+    return id;
+}
+
 bool ModelingScene::removeObject(ObjectId id) {
     if (!scene_.find(id)) return false;
     meshes_.erase(id);

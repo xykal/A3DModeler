@@ -24,6 +24,7 @@ class ModelingScene final {
 public:
     [[nodiscard]] ObjectId addPrimitive(PrimitiveType primitive, std::string_view name = {});
     [[nodiscard]] std::optional<ObjectId> duplicateObject(ObjectId sourceId);
+    [[nodiscard]] std::optional<ObjectId> separateSelectedFaces(ObjectId sourceId);
     [[nodiscard]] bool removeObject(ObjectId id);
     [[nodiscard]] bool selectObject(std::optional<ObjectId> id) noexcept;
     [[nodiscard]] bool applyTransform(ObjectId id, const Transform& transform);

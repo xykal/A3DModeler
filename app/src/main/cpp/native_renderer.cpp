@@ -892,6 +892,15 @@ Java_ai_arena_a3d_NativeRenderer_nativeBevelFace(JNIEnv*, jobject, jfloat amount
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSeparateFaces(JNIEnv*, jobject) {
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
+    const auto separated=modelingScene.separateSelectedFaces(cubeObjectId);
+    if (!separated || !activateObject(*separated)) return JNI_FALSE;
+    cubeSelected=hasMeshSelection();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDeleteFace(JNIEnv*, jobject) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = *activeMesh;

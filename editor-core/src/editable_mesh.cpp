@@ -326,6 +326,29 @@ std::optional<FaceId> EditableMesh::dissolveSelectedFaces() {
     return result;
 }
 
+std::unique_ptr<EditableMesh> EditableMesh::extractSelectedFaces() {
+    std::vector<FaceId> sources;
+    for (std::size_t i=0;i<faces_.size();++i)
+        if (!faces_[i].deleted && faces_[i].selected) sources.push_back(static_cast<FaceId>(i));
+    if (sources.empty()) return nullptr;
+    auto extracted=std::make_unique<EditableMesh>();
+    std::unordered_map<VertexId,VertexId> remap;
+    for (const FaceId faceId:sources) {
+        for (const VertexId oldId:faces_[faceId].vertices) if (!remap.contains(oldId))
+            remap.emplace(oldId,extracted->addVertex(vertices_[oldId].position));
+    }
+    for (const FaceId faceId:sources) {
+        std::vector<VertexId> vertices;
+        for (const VertexId oldId:faces_[faceId].vertices) vertices.push_back(remap.at(oldId));
+        const auto face=extracted->addFace(std::move(vertices));
+        if (face) (void)extracted->setFaceSelected(*face,true);
+        faces_[faceId].deleted=true; faces_[faceId].selected=false;
+    }
+    selectedEdges_.clear();
+    recalculateNormals(); extracted->recalculateNormals();
+    return extracted;
+}
+
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     if (faceId >= faces_.size() || faces_[faceId].deleted) return std::nullopt;
     selectedEdges_.clear();

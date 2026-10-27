@@ -13,6 +13,12 @@ int main() {
     assert(scene.mesh(sphere)->stats().faces>6);
     assert(scene.mesh(cylinder)->stats().faces>6);
 
+    assert(scene.mesh(cylinder)->setFaceSelected(0,true));
+    const auto separated=scene.separateSelectedFaces(cylinder);
+    assert(separated.has_value());
+    assert(scene.mesh(*separated)->stats().faces==1);
+    assert(scene.mesh(cylinder)->stats().faces>1);
+
     scene.object(cube)->transform.position={3.0F,0.0F,0.0F};
     assert(scene.mesh(cube)->setFaceSelected(0,true));
     const auto copy=scene.duplicateObject(cube);
@@ -33,7 +39,7 @@ int main() {
     assert(scene.redoTransform());
     assert(scene.object(sphere)->transform.nearlyEquals(moved));
     const auto summaries=scene.summaries();
-    assert(summaries.size()==4);
+    assert(summaries.size()==5);
     bool foundActive=false;
     for (const auto& summary:summaries) if (summary.id==sphere) {
         assert(summary.active);

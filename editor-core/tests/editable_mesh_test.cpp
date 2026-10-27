@@ -224,6 +224,15 @@ int main() {
     assert(dissolveMesh.selectedFaceCount()==1);
     assert(!dissolveMesh.dissolveSelectedFaces().has_value());
 
+    auto extractMesh=a3d::EditableMesh::cube();
+    assert(extractMesh.setFaceSelected(0,true));
+    auto extracted=extractMesh.extractSelectedFaces();
+    assert(extracted && extracted->validate() && extractMesh.validate());
+    assert(extractMesh.stats().faces==5);
+    assert(extracted->stats().vertices==4);
+    assert(extracted->stats().faces==1);
+    assert(extracted->selectedFaceCount()==1);
+
     const auto sphere=a3d::EditableMesh::uvSphere(1.0F,8,4);
     assert(sphere.validate());
     assert(sphere.stats().vertices==26);

@@ -57,6 +57,7 @@ public:
     [[nodiscard]] std::vector<FaceId> triangulateSelectedFaces();
     [[nodiscard]] std::vector<FaceId> subdivideSelectedFaces();
     [[nodiscard]] std::optional<FaceId> dissolveSelectedFaces();
+    [[nodiscard]] std::unique_ptr<EditableMesh> extractSelectedFaces();
     [[nodiscard]] std::optional<FaceId> extrudeFace(FaceId face, float distance);
     [[nodiscard]] std::optional<FaceId> insetFace(FaceId face, float amount);
     [[nodiscard]] std::optional<FaceId> bevelFace(FaceId face, float insetAmount, float depth);
