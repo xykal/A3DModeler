@@ -47,6 +47,16 @@ bool ModelingScene::selectObject(std::optional<ObjectId> id) noexcept {
     return true;
 }
 
+bool ModelingScene::applyTransform(ObjectId id, const Transform& transform) {
+    const auto* current=scene_.find(id);
+    if (!current || current->locked || current->transform.nearlyEquals(transform)) return false;
+    transformHistory_.execute(std::make_unique<TransformCommand>(id,current->transform,transform),scene_);
+    return true;
+}
+
+bool ModelingScene::undoTransform() { return transformHistory_.undo(scene_); }
+bool ModelingScene::redoTransform() { return transformHistory_.redo(scene_); }
+
 EditableMesh* ModelingScene::mesh(ObjectId id) noexcept {
     const auto found=meshes_.find(id);
     return found==meshes_.end()?nullptr:&found->second;
@@ -55,6 +65,17 @@ EditableMesh* ModelingScene::mesh(ObjectId id) noexcept {
 const EditableMesh* ModelingScene::mesh(ObjectId id) const noexcept {
     const auto found=meshes_.find(id);
     return found==meshes_.end()?nullptr:&found->second;
+}
+
+std::vector<ObjectSummary> ModelingScene::summaries() const {
+    std::vector<ObjectSummary> result;
+    for (const ObjectId id:scene_.objectIds()) {
+        const auto* item=scene_.find(id);
+        const auto* itemMesh=mesh(id);
+        if (!item || !itemMesh) continue;
+        result.push_back({id,item->name,item->primitive,item->visible,item->locked,activeObject_==id,itemMesh->stats()});
+    }
+    return result;
 }
 
 } // namespace a3d

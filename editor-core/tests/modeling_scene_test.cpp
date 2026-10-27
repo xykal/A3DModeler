@@ -23,6 +23,24 @@ int main() {
     assert(scene.selectObject(sphere));
     assert(scene.activeObject()==sphere);
     assert(!scene.selectObject(999999));
+    a3d::Transform moved=scene.object(sphere)->transform;
+    moved.position={2.0F,3.0F,4.0F};
+    assert(scene.applyTransform(sphere,moved));
+    assert(scene.object(sphere)->transform.nearlyEquals(moved));
+    assert(scene.undoTransform());
+    assert(scene.object(sphere)->transform.position.nearlyEquals({0.0F,0.0F,0.0F}));
+    assert(scene.redoTransform());
+    assert(scene.object(sphere)->transform.nearlyEquals(moved));
+    const auto summaries=scene.summaries();
+    assert(summaries.size()==4);
+    bool foundActive=false;
+    for (const auto& summary:summaries) if (summary.id==sphere) {
+        assert(summary.active);
+        assert(summary.name=="Sphere");
+        assert(summary.meshStats.faces>6);
+        foundActive=true;
+    }
+    assert(foundActive);
     assert(scene.removeObject(sphere));
     assert(!scene.mesh(sphere));
     assert(!scene.object(sphere));
