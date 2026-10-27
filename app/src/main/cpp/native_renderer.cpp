@@ -4,6 +4,7 @@
 #include "a3d/editor_core.hpp"
 #include "a3d/editable_mesh.hpp"
 #include "a3d/modeling_scene.hpp"
+#include "a3d/obj_io.hpp"
 #include "a3d/project_io.hpp"
 #include <algorithm>
 #include <array>
@@ -497,6 +498,30 @@ Java_ai_arena_a3d_NativeRenderer_nativeRenameObject(JNIEnv* env, jobject, jlong 
     const bool renamed=safe && modelingScene.scene().renameObject(static_cast<a3d::ObjectId>(id),candidate);
     if (raw) env->ReleaseStringUTFChars(name,raw);
     return renamed?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeExportObj(JNIEnv* env, jobject) {
+    const std::string text=a3d::exportObj(modelingScene);
+    if (text.size()>static_cast<std::size_t>(std::numeric_limits<jsize>::max())) return nullptr;
+    auto result=env->NewByteArray(static_cast<jsize>(text.size()));
+    if (result && !text.empty()) env->SetByteArrayRegion(result,0,static_cast<jsize>(text.size()),reinterpret_cast<const jbyte*>(text.data()));
+    return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeImportObj(JNIEnv* env, jobject, jbyteArray input) {
+    if (!input) return JNI_FALSE;
+    const jsize size=env->GetArrayLength(input);
+    if (size<=0 || size>64*1024*1024) return JNI_FALSE;
+    std::string text(static_cast<std::size_t>(size),'\0');
+    env->GetByteArrayRegion(input,0,size,reinterpret_cast<jbyte*>(text.data()));
+    if (env->ExceptionCheck()) return JNI_FALSE;
+    std::string error;
+    auto mesh=a3d::importObj(text,&error);
+    if (!mesh) return JNI_FALSE;
+    const auto id=modelingScene.addMesh(std::move(*mesh),"Imported OBJ");
+    return activateObject(id)?JNI_TRUE:JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL

@@ -60,6 +60,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Dissolve connected selected faces by extracting their boundary loop and rebuilding one polygon
 - Separate selected faces into a new scene object while preserving shared topology, transform, selection, and GPU visibility
 - Strict OBJ interchange core with multi-object export, baked transforms, polygon and negative-index import, slash-index compatibility, limits, and errors
+- Android document-picker Import OBJ / Export OBJ actions with guarded byte limits, scene insertion, renderer activation, and Outliner refresh
 - Push/PR automation is verification-only; APK/AAB builds are manually gated until the modeling milestone is approved
 - `armeabi-v7a` and `arm64-v8a` ABI filters
 - Signed release pipeline producing separate 32-bit/64-bit APKs plus Play Store AAB

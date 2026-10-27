@@ -86,6 +86,19 @@ class MainActivity : ComponentActivity() {
             if (bytes != null) EditorViewportRegistry.viewport?.loadProject(bytes)
         }
     }
+    private val exportObj = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) EditorViewportRegistry.viewport?.exportObj { bytes ->
+            runCatching { contentResolver.openOutputStream(uri,"wt")?.use { it.write(bytes) } }
+        }
+    }
+    private val importObj = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val bytes=contentResolver.openInputStream(uri)?.use { input ->
+                val data=input.readBytes(); require(data.size<=64*1024*1024); data
+            }
+            if (bytes!=null) EditorViewportRegistry.viewport?.importObj(bytes)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,7 +107,9 @@ class MainActivity : ComponentActivity() {
                 EditorScreen(
                     onSave = { createProject.launch("Untitled.a3dproj") },
                     onOpen = { openProject.launch(arrayOf("application/octet-stream", "application/zip", "*/*")) },
-                    onRecover = { recoverLatest() }
+                    onRecover = { recoverLatest() },
+                    onExportObj = { exportObj.launch("scene.obj") },
+                    onImportObj = { importObj.launch(arrayOf("text/plain", "application/octet-stream", "*/*")) }
                 )
             }
         }
@@ -128,7 +143,10 @@ private fun parseSceneSummary(summary: String): List<OutlinerItem> = summary.lin
 }.toList()
 
 @Composable
-private fun EditorScreen(onSave: () -> Unit, onOpen: () -> Unit, onRecover: () -> Unit) {
+private fun EditorScreen(
+    onSave: () -> Unit, onOpen: () -> Unit, onRecover: () -> Unit,
+    onExportObj: () -> Unit, onImportObj: () -> Unit
+) {
     var mode by remember { mutableStateOf("Object") }
     var outlinerItems by remember { mutableStateOf(emptyList<OutlinerItem>()) }
     Scaffold(
@@ -146,6 +164,8 @@ private fun EditorScreen(onSave: () -> Unit, onOpen: () -> Unit, onRecover: () -
                     TextButton(onClick = onOpen) { Text("Open") }
                     TextButton(onClick = onSave) { Text("Save") }
                     TextButton(onClick = onRecover) { Text("Recover") }
+                    TextButton(onClick = onImportObj) { Text("Import OBJ") }
+                    TextButton(onClick = onExportObj) { Text("Export OBJ") }
                     TextButton(onClick = { EditorViewportRegistry.viewport?.undo() }) { Text("Undo") }
                     TextButton(onClick = { EditorViewportRegistry.viewport?.redo() }) { Text("Redo") }
                     Spacer(Modifier.weight(1f))
@@ -403,6 +423,13 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun loadProject(data: ByteArray) = queueEvent {
         if (NativeRenderer.nativeLoadProject(data)) emitSceneFromGlThread()
     }
+    fun exportObj(callback: (ByteArray) -> Unit) = queueEvent {
+        val data=NativeRenderer.nativeExportObj()
+        if (data!=null) post { callback(data) }
+    }
+    fun importObj(data: ByteArray) = queueEvent {
+        if (NativeRenderer.nativeImportObj(data)) emitSceneFromGlThread()
+    }
     fun addPrimitive(type: Int) = queueEvent {
         NativeRenderer.nativeAddPrimitive(type); emitSceneFromGlThread()
     }
@@ -511,6 +538,8 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeRenameObject(id: Long, name: String): Boolean
     external fun nativeSaveProject(): ByteArray?
     external fun nativeLoadProject(data: ByteArray): Boolean
+    external fun nativeExportObj(): ByteArray?
+    external fun nativeImportObj(data: ByteArray): Boolean
     external fun nativeSceneSummary(): String
     external fun nativeDrawFrame()
     external fun nativeOrbit(dx: Float, dy: Float)

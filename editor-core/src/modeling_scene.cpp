@@ -20,6 +20,13 @@ ObjectId ModelingScene::addPrimitive(PrimitiveType primitive, std::string_view n
     return id;
 }
 
+ObjectId ModelingScene::addMesh(EditableMesh meshValue, std::string_view name) {
+    const ObjectId id=scene_.createObject(PrimitiveType::Cube,name.empty()?"Imported Mesh":name);
+    meshes_.emplace(id,std::move(meshValue));
+    activeObject_=id;
+    return id;
+}
+
 std::optional<ObjectId> ModelingScene::duplicateObject(ObjectId sourceId) {
     const auto found=meshes_.find(sourceId);
     if (found==meshes_.end()) return std::nullopt;

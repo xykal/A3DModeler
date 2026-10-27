@@ -23,6 +23,7 @@ struct ObjectSummary final {
 class ModelingScene final {
 public:
     [[nodiscard]] ObjectId addPrimitive(PrimitiveType primitive, std::string_view name = {});
+    [[nodiscard]] ObjectId addMesh(EditableMesh mesh, std::string_view name = {});
     [[nodiscard]] std::optional<ObjectId> duplicateObject(ObjectId sourceId);
     [[nodiscard]] std::optional<ObjectId> separateSelectedFaces(ObjectId sourceId);
     [[nodiscard]] bool removeObject(ObjectId id);
