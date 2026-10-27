@@ -339,6 +339,26 @@ std::optional<FaceId> EditableMesh::dissolveSelectedFaces() {
     return result;
 }
 
+std::optional<FaceId> EditableMesh::dissolveSelectedEdge() {
+    if (selectedEdges_.size()!=1U) return std::nullopt;
+    const auto edge=*selectedEdges_.begin();
+    std::vector<FaceId> adjacent;
+    for (std::size_t i=0;i<faces_.size();++i) {
+        const auto& face=faces_[i];
+        if (face.deleted) continue;
+        for (std::size_t e=0;e<face.vertices.size();++e) {
+            if (orderedEdge(face.vertices[e],face.vertices[(e+1U)%face.vertices.size()])==edge) {
+                adjacent.push_back(static_cast<FaceId>(i)); break;
+            }
+        }
+    }
+    if (adjacent.size()!=2U) return std::nullopt;
+    for (auto& face:faces_) face.selected=false;
+    faces_[adjacent[0]].selected=true; faces_[adjacent[1]].selected=true;
+    selectedEdges_.clear();
+    return dissolveSelectedFaces();
+}
+
 std::unique_ptr<EditableMesh> EditableMesh::extractSelectedFaces() {
     std::vector<FaceId> sources;
     for (std::size_t i=0;i<faces_.size();++i)

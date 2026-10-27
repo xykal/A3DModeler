@@ -212,7 +212,8 @@ private fun EditorScreen(
                 TextButton(onClick = { EditorViewportRegistry.viewport?.duplicateFaces() }) { Text("Duplicate") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.triangulateFaces() }) { Text("Triangulate") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.subdivideFaces() }) { Text("Subdivide") }
-                TextButton(onClick = { EditorViewportRegistry.viewport?.dissolveFaces() }) { Text("Dissolve") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.dissolveFaces() }) { Text("Dissolve Faces") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.dissolveEdge() }) { Text("Dissolve Edge") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.bevelFace() }) { Text("Bevel") }
@@ -506,6 +507,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun triangulateFaces() = queueEvent { NativeRenderer.nativeTriangulateFaces() }
     fun subdivideFaces() = queueEvent { NativeRenderer.nativeSubdivideFaces() }
     fun dissolveFaces() = queueEvent { NativeRenderer.nativeDissolveFaces() }
+    fun dissolveEdge() = queueEvent { NativeRenderer.nativeDissolveEdge() }
     fun bevelFace() = queueEvent { NativeRenderer.nativeBevelFace(0.2f, 0.15f) }
     fun separateFaces() = queueEvent {
         NativeRenderer.nativeSeparateFaces(); emitSceneFromGlThread()
@@ -574,6 +576,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeTriangulateFaces(): Boolean
     external fun nativeSubdivideFaces(): Boolean
     external fun nativeDissolveFaces(): Boolean
+    external fun nativeDissolveEdge(): Boolean
     external fun nativeBevelFace(amount: Float, depth: Float): Boolean
     external fun nativeSeparateFaces(): Boolean
     external fun nativeDeleteFace(): Boolean

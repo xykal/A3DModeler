@@ -58,6 +58,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Triangulate selected n-gons into selected triangle faces with topology history
 - Subdivide selected faces into center-fan polygons with selected results and undo/redo
 - Dissolve connected selected faces by extracting their boundary loop and rebuilding one polygon
+- Dissolve a selected manifold edge by joining its two adjacent polygons and rejecting boundary/non-manifold edges
 - Separate selected faces into a new scene object while preserving shared topology, transform, selection, and GPU visibility
 - Join visible unlocked objects into the active object with source-to-world-to-active-local transform baking
 - Strict OBJ interchange core with multi-object export, baked transforms, polygon and negative-index import, slash-index compatibility, limits, and errors

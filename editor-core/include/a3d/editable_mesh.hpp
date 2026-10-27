@@ -57,6 +57,7 @@ public:
     [[nodiscard]] std::vector<FaceId> triangulateSelectedFaces();
     [[nodiscard]] std::vector<FaceId> subdivideSelectedFaces();
     [[nodiscard]] std::optional<FaceId> dissolveSelectedFaces();
+    [[nodiscard]] std::optional<FaceId> dissolveSelectedEdge();
     [[nodiscard]] std::unique_ptr<EditableMesh> extractSelectedFaces();
     [[nodiscard]] bool appendTransformed(const EditableMesh& source, const Transform& sourceTransform,
                                          const Transform& destinationTransform);

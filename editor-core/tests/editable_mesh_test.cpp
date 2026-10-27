@@ -224,6 +224,15 @@ int main() {
     assert(dissolveMesh.selectedFaceCount()==1);
     assert(!dissolveMesh.dissolveSelectedFaces().has_value());
 
+    auto edgeDissolveMesh=a3d::EditableMesh::cube();
+    assert(edgeDissolveMesh.setEdgeSelected(0,1,true));
+    const auto edgeDissolved=edgeDissolveMesh.dissolveSelectedEdge();
+    assert(edgeDissolved.has_value());
+    assert(edgeDissolveMesh.validate());
+    assert(edgeDissolveMesh.stats().faces==5);
+    assert(edgeDissolveMesh.selectedFaceCount()==1);
+    assert(!edgeDissolveMesh.dissolveSelectedEdge().has_value());
+
     auto extractMesh=a3d::EditableMesh::cube();
     assert(extractMesh.setFaceSelected(0,true));
     auto extracted=extractMesh.extractSelectedFaces();
