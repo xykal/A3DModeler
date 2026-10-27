@@ -5,6 +5,10 @@ import android.content.Context
 import android.opengl.GLSurfaceView
 import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import java.io.File
+import java.io.FileOutputStream
 import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -31,6 +35,40 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class MainActivity : ComponentActivity() {
+    private val autosaveHandler = Handler(Looper.getMainLooper())
+    private val autosaveTask = object : Runnable {
+        override fun run() {
+            requestAutosave()
+            autosaveHandler.postDelayed(this, 60_000L)
+        }
+    }
+
+    private val recoveryDirectory by lazy { File(filesDir, "recovery") }
+    private fun recoveryFile(slot: Int) = File(recoveryDirectory, "autosave-$slot.a3dproj")
+
+    private fun writeRecovery(data: ByteArray) = runCatching {
+        recoveryDirectory.mkdirs()
+        recoveryFile(2).delete()
+        if (recoveryFile(1).exists()) recoveryFile(1).renameTo(recoveryFile(2))
+        if (recoveryFile(0).exists()) recoveryFile(0).renameTo(recoveryFile(1))
+        val temporary = File(recoveryDirectory, "autosave.tmp")
+        FileOutputStream(temporary).use { stream ->
+            stream.write(data)
+            stream.fd.sync()
+        }
+        check(temporary.renameTo(recoveryFile(0)))
+    }
+
+    private fun requestAutosave() {
+        EditorViewportRegistry.viewport?.saveProject { writeRecovery(it) }
+    }
+
+    private fun recoverLatest() {
+        val file = recoveryFile(0)
+        if (file.exists() && file.length() in 1..(256L * 1024L * 1024L))
+            runCatching { EditorViewportRegistry.viewport?.loadProject(file.readBytes()) }
+    }
+
     private val createProject = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
@@ -55,10 +93,23 @@ class MainActivity : ComponentActivity() {
             A3DTheme {
                 EditorScreen(
                     onSave = { createProject.launch("Untitled.a3dproj") },
-                    onOpen = { openProject.launch(arrayOf("application/octet-stream", "application/zip", "*/*")) }
+                    onOpen = { openProject.launch(arrayOf("application/octet-stream", "application/zip", "*/*")) },
+                    onRecover = { recoverLatest() }
                 )
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        autosaveHandler.removeCallbacks(autosaveTask)
+        autosaveHandler.postDelayed(autosaveTask, 60_000L)
+    }
+
+    override fun onStop() {
+        requestAutosave()
+        autosaveHandler.removeCallbacks(autosaveTask)
+        super.onStop()
     }
 }
 
@@ -77,7 +128,7 @@ private fun parseSceneSummary(summary: String): List<OutlinerItem> = summary.lin
 }.toList()
 
 @Composable
-private fun EditorScreen(onSave: () -> Unit, onOpen: () -> Unit) {
+private fun EditorScreen(onSave: () -> Unit, onOpen: () -> Unit, onRecover: () -> Unit) {
     var mode by remember { mutableStateOf("Object") }
     var outlinerItems by remember { mutableStateOf(emptyList<OutlinerItem>()) }
     Scaffold(
@@ -94,6 +145,7 @@ private fun EditorScreen(onSave: () -> Unit, onOpen: () -> Unit) {
                     }
                     TextButton(onClick = onOpen) { Text("Open") }
                     TextButton(onClick = onSave) { Text("Save") }
+                    TextButton(onClick = onRecover) { Text("Recover") }
                     TextButton(onClick = { EditorViewportRegistry.viewport?.undo() }) { Text("Undo") }
                     TextButton(onClick = { EditorViewportRegistry.viewport?.redo() }) { Text("Redo") }
                     Spacer(Modifier.weight(1f))

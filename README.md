@@ -29,6 +29,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Outliner object properties for rename, visibility, and lock state with validated JNI updates
 - Versioned binary project persistence core with multi-object meshes, transforms, selection, active object, visibility, lock state, strict limits, and corruption errors
 - Android Storage Access Framework Open/Save bridge using `.a3dproj` documents and a 256 MB guarded JNI byte pipeline
+- 60-second autosave, lifecycle save, three rotating recovery slots, fsync + atomic rename, and manual Recover action
 - Renderer geometry generated from `EditableMesh` instead of a hardcoded cube
 - Edit-mode extrusion rebuilds triangle and wireframe GPU buffers at runtime
 - Per-face GPU ID picking with active-face highlight
