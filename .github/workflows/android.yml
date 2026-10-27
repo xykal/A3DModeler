@@ -36,7 +36,7 @@ jobs:
           grep -q 'A3D_KEYSTORE_FILE' app/build.gradle.kts
       - name: Verify JNI contract names
         run: |
-          for method in nativeSurfaceCreated nativeSurfaceChanged nativeDrawFrame nativeOrbit nativeZoom nativePan nativePick nativeBoxSelect nativeSetSelectionMode nativeSetAdditiveSelection nativeSetSnapping nativeSelectAll nativeInvertSelection nativeClearSelection nativeBeginMeshTransform nativeTranslateSelection nativeDragMeshTransform nativeDragRotateTransform nativeDragScaleTransform nativeEndMeshTransform nativeCancelMeshTransform nativeNudge nativeExtrude nativeInset nativeMergeVertices nativeFillFace nativeDuplicateFaces nativeBevelFace nativeDeleteFace nativeFlipFace nativeUndo nativeRedo nativeCapabilities nativeRelease; do
+          for method in nativeSurfaceCreated nativeSurfaceChanged nativeDrawFrame nativeOrbit nativeZoom nativePan nativePick nativeBoxSelect nativeSetSelectionMode nativeSetAdditiveSelection nativeSetSnapping nativeSelectAll nativeInvertSelection nativeClearSelection nativeBeginMeshTransform nativeTranslateSelection nativeDragMeshTransform nativeDragRotateTransform nativeDragScaleTransform nativeEndMeshTransform nativeCancelMeshTransform nativeNudge nativeExtrude nativeInset nativeMergeVertices nativeFillFace nativeDuplicateFaces nativeTriangulateFaces nativeBevelFace nativeDeleteFace nativeFlipFace nativeUndo nativeRedo nativeCapabilities nativeRelease; do
             grep -q "external fun $method" app/src/main/java/ai/arena/a3d/MainActivity.kt
             grep -q "NativeRenderer_$method" app/src/main/cpp/native_renderer.cpp
           done

@@ -163,6 +163,31 @@ std::vector<FaceId> EditableMesh::duplicateSelectedFaces(Vec3 offset) {
     return created;
 }
 
+std::vector<FaceId> EditableMesh::triangulateSelectedFaces() {
+    std::vector<FaceId> sourceIds;
+    for (std::size_t i=0;i<faces_.size();++i)
+        if (!faces_[i].deleted && faces_[i].selected && faces_[i].vertices.size()>3U)
+            sourceIds.push_back(static_cast<FaceId>(i));
+    if (sourceIds.empty()) return {};
+
+    std::vector<std::vector<VertexId>> triangles;
+    for (const FaceId id:sourceIds) {
+        const auto vertices=faces_[id].vertices;
+        for (std::size_t i=1;i+1<vertices.size();++i)
+            triangles.push_back({vertices[0],vertices[i],vertices[i+1]});
+        faces_[id].deleted=true;
+        faces_[id].selected=false;
+    }
+    std::vector<FaceId> created;
+    created.reserve(triangles.size());
+    for (auto& vertices:triangles) if (const auto face=addFace(std::move(vertices))) {
+        faces_[*face].selected=true;
+        created.push_back(*face);
+    }
+    recalculateNormals();
+    return created;
+}
+
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
     if (faceId >= faces_.size() || faces_[faceId].deleted) return std::nullopt;
     selectedEdges_.clear();

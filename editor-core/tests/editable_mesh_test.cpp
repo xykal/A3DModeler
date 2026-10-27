@@ -192,5 +192,15 @@ int main() {
     assert(fillMesh.stats().faces==1);
     assert(fillMesh.stats().triangles==2);
     assert(fillMesh.selectedFaceCount()==1);
+
+    auto triangulateMesh=a3d::EditableMesh::plane(2.0F);
+    assert(triangulateMesh.setFaceSelected(0,true));
+    const auto triangles=triangulateMesh.triangulateSelectedFaces();
+    assert(triangles.size()==2);
+    assert(triangulateMesh.validate());
+    assert(triangulateMesh.stats().faces==2);
+    assert(triangulateMesh.stats().triangles==2);
+    assert(triangulateMesh.selectedFaceCount()==2);
+    assert(triangulateMesh.triangulateSelectedFaces().empty());
     return 0;
 }
