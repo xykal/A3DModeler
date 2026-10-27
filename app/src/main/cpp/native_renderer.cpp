@@ -4,8 +4,10 @@
 #include "a3d/editor_core.hpp"
 #include "a3d/editable_mesh.hpp"
 #include "a3d/modeling_scene.hpp"
+#include "a3d/project_io.hpp"
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <set>
 #include <cmath>
 #include <sstream>
@@ -495,6 +497,43 @@ Java_ai_arena_a3d_NativeRenderer_nativeRenameObject(JNIEnv* env, jobject, jlong 
     const bool renamed=safe && modelingScene.scene().renameObject(static_cast<a3d::ObjectId>(id),candidate);
     if (raw) env->ReleaseStringUTFChars(name,raw);
     return renamed?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSaveProject(JNIEnv* env, jobject) {
+    std::ostringstream output(std::ios::binary);
+    if (!a3d::ProjectIo::save(modelingScene,output)) return nullptr;
+    const std::string bytes=output.str();
+    if (bytes.size()>static_cast<std::size_t>(std::numeric_limits<jsize>::max())) return nullptr;
+    jbyteArray result=env->NewByteArray(static_cast<jsize>(bytes.size()));
+    if (!result) return nullptr;
+    env->SetByteArrayRegion(result,0,static_cast<jsize>(bytes.size()),reinterpret_cast<const jbyte*>(bytes.data()));
+    return result;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeLoadProject(JNIEnv* env, jobject, jbyteArray data) {
+    if (!data) return JNI_FALSE;
+    const jsize size=env->GetArrayLength(data);
+    if (size<=0 || size>256*1024*1024) return JNI_FALSE;
+    std::string bytes(static_cast<std::size_t>(size),'\0');
+    env->GetByteArrayRegion(data,0,size,reinterpret_cast<jbyte*>(bytes.data()));
+    std::istringstream input(bytes,std::ios::binary);
+    auto loaded=a3d::ProjectIo::load(input);
+    if (!loaded || loaded.scene->objectIds().empty()) return JNI_FALSE;
+    releaseResources();
+    modelingScene=std::move(*loaded.scene);
+    const auto active=modelingScene.activeObject().value_or(modelingScene.objectIds().front());
+    cubeObjectId=active;
+    activeMesh=modelingScene.mesh(active);
+    meshHistory.clear(); undoActions.clear(); redoActions.clear();
+    transformBefore.reset(); transformChanged=false; transformAxis=-1;
+    createResources();
+    createPickTarget(viewportWidth,viewportHeight);
+    (void)modelingScene.selectObject(active);
+    cubeSelected=hasMeshSelection();
+    syncActiveFace();
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

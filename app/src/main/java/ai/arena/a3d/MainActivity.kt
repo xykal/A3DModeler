@@ -3,6 +3,7 @@ package ai.arena.a3d
 import android.app.ActivityManager
 import android.content.Context
 import android.opengl.GLSurfaceView
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
@@ -30,9 +31,34 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class MainActivity : ComponentActivity() {
+    private val createProject = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) EditorViewportRegistry.viewport?.saveProject { bytes ->
+            runCatching { contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } }
+        }
+    }
+    private val openProject = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                val data = input.readBytes()
+                require(data.size <= 256 * 1024 * 1024)
+                data
+            }
+            if (bytes != null) EditorViewportRegistry.viewport?.loadProject(bytes)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { A3DTheme { EditorScreen() } }
+        setContent {
+            A3DTheme {
+                EditorScreen(
+                    onSave = { createProject.launch("Untitled.a3dproj") },
+                    onOpen = { openProject.launch(arrayOf("application/octet-stream", "application/zip", "*/*")) }
+                )
+            }
+        }
     }
 }
 
@@ -51,7 +77,7 @@ private fun parseSceneSummary(summary: String): List<OutlinerItem> = summary.lin
 }.toList()
 
 @Composable
-private fun EditorScreen() {
+private fun EditorScreen(onSave: () -> Unit, onOpen: () -> Unit) {
     var mode by remember { mutableStateOf("Object") }
     var outlinerItems by remember { mutableStateOf(emptyList<OutlinerItem>()) }
     Scaffold(
@@ -66,6 +92,8 @@ private fun EditorScreen() {
                     TextButton(onClick = { mode = if (mode == "Object") "Edit" else "Object" }) {
                         Text("$mode Mode")
                     }
+                    TextButton(onClick = onOpen) { Text("Open") }
+                    TextButton(onClick = onSave) { Text("Save") }
                     TextButton(onClick = { EditorViewportRegistry.viewport?.undo() }) { Text("Undo") }
                     TextButton(onClick = { EditorViewportRegistry.viewport?.redo() }) { Text("Redo") }
                     Spacer(Modifier.weight(1f))
@@ -313,6 +341,13 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         post { sceneListener?.invoke(summary) }
     }
     fun refreshScene() = queueEvent { emitSceneFromGlThread() }
+    fun saveProject(callback: (ByteArray) -> Unit) = queueEvent {
+        val data = NativeRenderer.nativeSaveProject()
+        if (data != null) post { callback(data) }
+    }
+    fun loadProject(data: ByteArray) = queueEvent {
+        if (NativeRenderer.nativeLoadProject(data)) emitSceneFromGlThread()
+    }
     fun addPrimitive(type: Int) = queueEvent {
         NativeRenderer.nativeAddPrimitive(type); emitSceneFromGlThread()
     }
@@ -414,6 +449,8 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeSetObjectVisible(id: Long, visible: Boolean): Boolean
     external fun nativeSetObjectLocked(id: Long, locked: Boolean): Boolean
     external fun nativeRenameObject(id: Long, name: String): Boolean
+    external fun nativeSaveProject(): ByteArray?
+    external fun nativeLoadProject(data: ByteArray): Boolean
     external fun nativeSceneSummary(): String
     external fun nativeDrawFrame()
     external fun nativeOrbit(dx: Float, dy: Float)
