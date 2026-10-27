@@ -213,6 +213,17 @@ int main() {
     assert(subdivideMesh.stats().triangles==4);
     assert(subdivideMesh.selectedFaceCount()==4);
 
+    auto dissolveMesh=a3d::EditableMesh::plane(2.0F);
+    assert(dissolveMesh.setFaceSelected(0,true));
+    assert(dissolveMesh.triangulateSelectedFaces().size()==2);
+    const auto dissolved=dissolveMesh.dissolveSelectedFaces();
+    assert(dissolved.has_value());
+    assert(dissolveMesh.validate());
+    assert(dissolveMesh.stats().faces==1);
+    assert(dissolveMesh.stats().triangles==2);
+    assert(dissolveMesh.selectedFaceCount()==1);
+    assert(!dissolveMesh.dissolveSelectedFaces().has_value());
+
     const auto sphere=a3d::EditableMesh::uvSphere(1.0F,8,4);
     assert(sphere.validate());
     assert(sphere.stats().vertices==26);

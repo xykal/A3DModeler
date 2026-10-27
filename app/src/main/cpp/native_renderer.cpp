@@ -844,6 +844,17 @@ Java_ai_arena_a3d_NativeRenderer_nativeSubdivideFaces(JNIEnv*, jobject) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDissolveFaces(JNIEnv*, jobject) {
+    if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
+    const a3d::EditableMesh before=*activeMesh;
+    const auto result=activeMesh->dissolveSelectedFaces();
+    if (!result) return JNI_FALSE;
+    activeFace=*result;
+    if (!meshHistory.commit(before,*activeMesh)) return JNI_FALSE;
+    recordAction(ActionKind::MeshTopology); createCube(); return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDuplicateFaces(JNIEnv*, jobject, jfloat offset) {
     if (!cubeSelected || selectionMode != a3d::SelectionMode::Face) return JNI_FALSE;
     const a3d::EditableMesh before = *activeMesh;

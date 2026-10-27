@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -285,6 +286,44 @@ std::vector<FaceId> EditableMesh::subdivideSelectedFaces() {
     }
     recalculateNormals();
     return created;
+}
+
+std::optional<FaceId> EditableMesh::dissolveSelectedFaces() {
+    std::vector<FaceId> selectedFaces;
+    std::map<std::pair<VertexId,VertexId>,int> edgeUses;
+    for (std::size_t i=0;i<faces_.size();++i) {
+        const auto& face=faces_[i];
+        if (face.deleted || !face.selected) continue;
+        selectedFaces.push_back(static_cast<FaceId>(i));
+        for (std::size_t e=0;e<face.vertices.size();++e)
+            ++edgeUses[orderedEdge(face.vertices[e],face.vertices[(e+1U)%face.vertices.size()])];
+    }
+    if (selectedFaces.size()<2U) return std::nullopt;
+    std::map<VertexId,std::vector<VertexId>> adjacency;
+    std::size_t boundaryEdges=0;
+    for (const auto& [edge,uses]:edgeUses) if (uses==1) {
+        adjacency[edge.first].push_back(edge.second);
+        adjacency[edge.second].push_back(edge.first);
+        ++boundaryEdges;
+    }
+    if (boundaryEdges<3U) return std::nullopt;
+    for (const auto& [vertex,neighbors]:adjacency) { (void)vertex; if (neighbors.size()!=2U) return std::nullopt; }
+    std::vector<VertexId> boundary;
+    const VertexId start=adjacency.begin()->first;
+    VertexId previous=std::numeric_limits<VertexId>::max(),current=start;
+    do {
+        boundary.push_back(current);
+        const auto& neighbors=adjacency[current];
+        const VertexId next=neighbors[0]==previous?neighbors[1]:neighbors[0];
+        previous=current; current=next;
+        if (boundary.size()>boundaryEdges) return std::nullopt;
+    } while (current!=start);
+    if (boundary.size()!=boundaryEdges) return std::nullopt;
+    for (const auto id:selectedFaces) { faces_[id].deleted=true; faces_[id].selected=false; }
+    const auto result=addFace(std::move(boundary));
+    if (result) faces_[*result].selected=true;
+    recalculateNormals();
+    return result;
 }
 
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
