@@ -206,6 +206,20 @@ std::set<std::pair<VertexId, VertexId>> EditableMesh::topologyEdges() const {
     return edges;
 }
 
+std::optional<FaceId> EditableMesh::bevelFace(FaceId face, float insetAmount, float depth) {
+    if (face >= faces_.size() || faces_[face].deleted || insetAmount <= 0.0F || insetAmount >= 1.0F)
+        return std::nullopt;
+    const Vec3 normal = faces_[face].normal;
+    clearSelection();
+    faces_[face].selected = true;
+    const auto inner = insetFace(face, insetAmount);
+    if (!inner) return std::nullopt;
+    if (std::fabs(depth) > 0.000001F &&
+        !translateSelected(SelectionMode::Face, {normal.x*depth,normal.y*depth,normal.z*depth}))
+        return std::nullopt;
+    return inner;
+}
+
 bool EditableMesh::setVertexSelected(VertexId vertex, bool selected) {
     if (vertex >= vertices_.size()) return false;
     vertices_[vertex].selected = selected;

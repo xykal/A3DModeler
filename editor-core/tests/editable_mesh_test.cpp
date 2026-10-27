@@ -163,5 +163,17 @@ int main() {
     assert(duplicateMesh.stats().vertices == 14);
     assert(duplicateMesh.stats().faces == 8);
     assert(duplicateMesh.selectedFaceCount() == 2);
+
+    auto bevelMesh = a3d::EditableMesh::plane(4.0F);
+    assert(!bevelMesh.bevelFace(0, 0.0F, 0.2F).has_value());
+    const auto beveled = bevelMesh.bevelFace(0, 0.25F, 0.5F);
+    assert(beveled.has_value());
+    assert(bevelMesh.validate());
+    assert(bevelMesh.stats().vertices == 8);
+    assert(bevelMesh.stats().faces == 5);
+    assert(bevelMesh.selectedFaceCount() == 1);
+    const auto bevelCenter = bevelMesh.selectionCenter(a3d::SelectionMode::Face);
+    assert(bevelCenter.has_value());
+    assert(std::fabs(bevelCenter->y) > 0.49F);
     return 0;
 }

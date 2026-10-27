@@ -83,6 +83,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.duplicateFaces() }) { Text("Duplicate") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.bevelFace() }) { Text("Bevel") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.flipFace() }) { Text("Flip") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.deleteFace() }) { Text("Delete") }
                 Spacer(Modifier.width(16.dp))
@@ -251,6 +252,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun inset(amount: Float) = queueEvent { NativeRenderer.nativeInset(amount) }
     fun mergeVertices() = queueEvent { NativeRenderer.nativeMergeVertices() }
     fun duplicateFaces() = queueEvent { NativeRenderer.nativeDuplicateFaces(0.5f) }
+    fun bevelFace() = queueEvent { NativeRenderer.nativeBevelFace(0.2f, 0.15f) }
     fun deleteFace() = queueEvent { NativeRenderer.nativeDeleteFace() }
     fun flipFace() = queueEvent { NativeRenderer.nativeFlipFace() }
     fun undo() = queueEvent { NativeRenderer.nativeUndo() }
@@ -298,6 +300,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeInset(amount: Float): Boolean
     external fun nativeMergeVertices(): Boolean
     external fun nativeDuplicateFaces(offset: Float): Boolean
+    external fun nativeBevelFace(amount: Float, depth: Float): Boolean
     external fun nativeDeleteFace(): Boolean
     external fun nativeFlipFace(): Boolean
     external fun nativeUndo(): Boolean

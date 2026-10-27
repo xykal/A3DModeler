@@ -52,6 +52,7 @@ public:
     [[nodiscard]] std::vector<FaceId> duplicateSelectedFaces(Vec3 offset);
     [[nodiscard]] std::optional<FaceId> extrudeFace(FaceId face, float distance);
     [[nodiscard]] std::optional<FaceId> insetFace(FaceId face, float amount);
+    [[nodiscard]] std::optional<FaceId> bevelFace(FaceId face, float insetAmount, float depth);
     [[nodiscard]] bool setVertexSelected(VertexId vertex, bool selected);
     [[nodiscard]] bool setEdgeSelected(VertexId first, VertexId second, bool selected);
     [[nodiscard]] bool setFaceSelected(FaceId face, bool selected);
