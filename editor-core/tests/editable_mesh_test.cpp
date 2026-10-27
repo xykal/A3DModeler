@@ -175,5 +175,22 @@ int main() {
     const auto bevelCenter = bevelMesh.selectionCenter(a3d::SelectionMode::Face);
     assert(bevelCenter.has_value());
     assert(std::fabs(bevelCenter->y) > 0.49F);
+
+    a3d::EditableMesh fillMesh;
+    const auto f0=fillMesh.addVertex({-1.0F,0.0F,-1.0F});
+    const auto f1=fillMesh.addVertex({1.0F,0.0F,-1.0F});
+    const auto f2=fillMesh.addVertex({1.0F,0.0F,1.0F});
+    const auto f3=fillMesh.addVertex({-1.0F,0.0F,1.0F});
+    assert(!fillMesh.fillSelectedVertices().has_value());
+    assert(fillMesh.setVertexSelected(f2,true));
+    assert(fillMesh.setVertexSelected(f0,true));
+    assert(fillMesh.setVertexSelected(f3,true));
+    assert(fillMesh.setVertexSelected(f1,true));
+    const auto filled=fillMesh.fillSelectedVertices();
+    assert(filled.has_value());
+    assert(fillMesh.validate());
+    assert(fillMesh.stats().faces==1);
+    assert(fillMesh.stats().triangles==2);
+    assert(fillMesh.selectedFaceCount()==1);
     return 0;
 }

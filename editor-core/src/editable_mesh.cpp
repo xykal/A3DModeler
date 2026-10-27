@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -99,6 +100,38 @@ std::optional<VertexId> EditableMesh::mergeSelectedVertices() {
     vertices_[target].selected = true;
     recalculateNormals();
     return target;
+}
+
+std::optional<FaceId> EditableMesh::fillSelectedVertices() {
+    const auto selectedSet = selectedVertexIds(SelectionMode::Vertex);
+    if (selectedSet.size() < 3U) return std::nullopt;
+    std::vector<VertexId> selected(selectedSet.begin(), selectedSet.end());
+    Vec3 center{};
+    Vec3 minimum{std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),std::numeric_limits<float>::max()};
+    Vec3 maximum{-minimum.x,-minimum.y,-minimum.z};
+    for (const VertexId id : selected) {
+        const Vec3 p=vertices_[id].position;
+        center.x+=p.x; center.y+=p.y; center.z+=p.z;
+        minimum.x=std::min(minimum.x,p.x); minimum.y=std::min(minimum.y,p.y); minimum.z=std::min(minimum.z,p.z);
+        maximum.x=std::max(maximum.x,p.x); maximum.y=std::max(maximum.y,p.y); maximum.z=std::max(maximum.z,p.z);
+    }
+    const float inverse=1.0F/static_cast<float>(selected.size());
+    center={center.x*inverse,center.y*inverse,center.z*inverse};
+    const Vec3 span{maximum.x-minimum.x,maximum.y-minimum.y,maximum.z-minimum.z};
+    const int dropAxis = span.x<=span.y && span.x<=span.z ? 0 : (span.y<=span.z ? 1 : 2);
+    std::sort(selected.begin(),selected.end(),[&](VertexId a,VertexId b) {
+        const Vec3 pa=vertices_[a].position, pb=vertices_[b].position;
+        const auto angle=[&](Vec3 p) {
+            if (dropAxis==0) return std::atan2(p.z-center.z,p.y-center.y);
+            if (dropAxis==1) return std::atan2(p.x-center.x,p.z-center.z);
+            return std::atan2(p.y-center.y,p.x-center.x);
+        };
+        return angle(pa)<angle(pb);
+    });
+    clearSelection();
+    const auto face=addFace(std::move(selected));
+    if (face) faces_[*face].selected=true;
+    return face;
 }
 
 std::vector<FaceId> EditableMesh::duplicateSelectedFaces(Vec3 offset) {
