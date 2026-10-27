@@ -128,7 +128,7 @@ private fun EditorScreen() {
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
-                    OutlinerStrip(outlinerItems, Modifier.fillMaxWidth().height(54.dp))
+                    OutlinerStrip(outlinerItems, Modifier.fillMaxWidth().height(82.dp))
                     NativeViewport(Modifier.weight(1f).fillMaxWidth()) { outlinerItems = parseSceneSummary(it) }
                 }
             }
@@ -151,7 +151,7 @@ private fun OutlinerPanel(sceneItems: List<OutlinerItem>, modifier: Modifier = M
 private fun OutlinerStrip(sceneItems: List<OutlinerItem>, modifier: Modifier = Modifier) {
     Surface(modifier, color = Color(0xFF1B1E24)) {
         LazyRow(contentPadding = PaddingValues(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            items(sceneItems, key = { it.id }) { OutlinerEntry(it, Modifier.width(150.dp)) }
+            items(sceneItems, key = { it.id }) { OutlinerEntry(it, Modifier.width(190.dp)) }
         }
     }
 }
@@ -159,12 +159,34 @@ private fun OutlinerStrip(sceneItems: List<OutlinerItem>, modifier: Modifier = M
 @Composable
 private fun OutlinerEntry(item: OutlinerItem, modifier: Modifier = Modifier) {
     val borderColor = if (item.active) Color(0xFF7C9CFF) else Color.Transparent
+    var editing by remember(item.id) { mutableStateOf(false) }
+    var draftName by remember(item.id, item.name) { mutableStateOf(item.name) }
     Column(modifier.padding(3.dp).border(1.dp, borderColor, MaterialTheme.shapes.small)
-        .clickable { EditorViewportRegistry.viewport?.selectObject(item.id) }.padding(7.dp)) {
-        Text(item.name, color = if (item.active) Color(0xFFAFC0FF) else Color(0xFFD6D8DE),
-            style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        .clickable { EditorViewportRegistry.viewport?.selectObject(item.id) }.padding(6.dp)) {
+        if (editing) {
+            OutlinedTextField(draftName, { draftName = it }, singleLine = true,
+                textStyle = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.fillMaxWidth().height(42.dp))
+        } else {
+            Text(item.name, color = if (item.active) Color(0xFFAFC0FF) else Color(0xFFD6D8DE),
+                style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
         Text("V ${item.vertices}  E ${item.edges}  F ${item.faces}  T ${item.triangles}",
             color = Color(0xFF858B96), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (item.visible) "Hide" else "Show", color = Color(0xFF8FB3FF),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.clickable { EditorViewportRegistry.viewport?.setObjectVisible(item.id, !item.visible) })
+            Text(if (item.locked) "Unlock" else "Lock", color = Color(0xFF8FB3FF),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.clickable { EditorViewportRegistry.viewport?.setObjectLocked(item.id, !item.locked) })
+            Text(if (editing) "Save" else "Rename", color = Color(0xFF8FB3FF),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.clickable {
+                    if (editing) EditorViewportRegistry.viewport?.renameObject(item.id, draftName.trim())
+                    editing = !editing
+                })
+        }
     }
 }
 
@@ -303,6 +325,15 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun deleteObject() = queueEvent {
         NativeRenderer.nativeDeleteObject(); emitSceneFromGlThread()
     }
+    fun setObjectVisible(id: Long, visible: Boolean) = queueEvent {
+        NativeRenderer.nativeSetObjectVisible(id, visible); emitSceneFromGlThread()
+    }
+    fun setObjectLocked(id: Long, locked: Boolean) = queueEvent {
+        NativeRenderer.nativeSetObjectLocked(id, locked); emitSceneFromGlThread()
+    }
+    fun renameObject(id: Long, name: String) = queueEvent {
+        NativeRenderer.nativeRenameObject(id, name); emitSceneFromGlThread()
+    }
 
     fun selectionMode(mode: Int) {
         moveToolActive = false
@@ -380,6 +411,9 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeSelectObject(id: Long): Boolean
     external fun nativeDuplicateObject(): Long
     external fun nativeDeleteObject(): Boolean
+    external fun nativeSetObjectVisible(id: Long, visible: Boolean): Boolean
+    external fun nativeSetObjectLocked(id: Long, locked: Boolean): Boolean
+    external fun nativeRenameObject(id: Long, name: String): Boolean
     external fun nativeSceneSummary(): String
     external fun nativeDrawFrame()
     external fun nativeOrbit(dx: Float, dy: Float)

@@ -477,6 +477,26 @@ Java_ai_arena_a3d_NativeRenderer_nativeDeleteObject(JNIEnv*, jobject) {
     return active && activateObject(*active)?JNI_TRUE:JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSetObjectVisible(JNIEnv*, jobject, jlong id, jboolean visible) {
+    return modelingScene.scene().setVisible(static_cast<a3d::ObjectId>(id),visible==JNI_TRUE)?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSetObjectLocked(JNIEnv*, jobject, jlong id, jboolean locked) {
+    return modelingScene.scene().setLocked(static_cast<a3d::ObjectId>(id),locked==JNI_TRUE)?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeRenameObject(JNIEnv* env, jobject, jlong id, jstring name) {
+    const char* raw=env->GetStringUTFChars(name,nullptr);
+    const std::string candidate=raw?raw:"";
+    const bool safe=!candidate.empty() && candidate.find_first_of("|\r\n")==std::string::npos;
+    const bool renamed=safe && modelingScene.scene().renameObject(static_cast<a3d::ObjectId>(id),candidate);
+    if (raw) env->ReleaseStringUTFChars(name,raw);
+    return renamed?JNI_TRUE:JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeSceneSummary(JNIEnv* env, jobject) {
     std::ostringstream output;

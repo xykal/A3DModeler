@@ -1,4 +1,5 @@
 #include "a3d/modeling_scene.hpp"
+#include <algorithm>
 #include <cassert>
 
 int main() {
@@ -41,6 +42,13 @@ int main() {
         foundActive=true;
     }
     assert(foundActive);
+    assert(scene.scene().setVisible(cube,false));
+    assert(scene.scene().setLocked(cube,true));
+    assert(scene.scene().renameObject(cube,"Hero Mesh"));
+    const auto updated=scene.summaries();
+    const auto hero=std::find_if(updated.begin(),updated.end(),[&](const auto& item){ return item.id==cube; });
+    assert(hero!=updated.end());
+    assert(hero->name=="Hero Mesh" && !hero->visible && hero->locked);
     assert(scene.removeObject(sphere));
     assert(!scene.mesh(sphere));
     assert(!scene.object(sphere));
