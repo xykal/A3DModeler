@@ -38,6 +38,15 @@ std::vector<ActionKind> redoActions;
 std::optional<a3d::EditableMesh> transformBefore;
 bool transformChanged = false;
 int transformAxis = -1;
+bool snappingEnabled = false;
+float moveSnapStep = 0.25f;
+float angleSnapRadians = 15.0f * kPi / 180.0f;
+float scaleSnapStep = 0.1f;
+Vec3 rawMoveDelta{};
+Vec3 appliedMoveDelta{};
+float rawTransformScalar = 0.0f;
+float appliedTransformScalar = 0.0f;
+float appliedScaleFactor = 1.0f;
 a3d::ObjectId cubeObjectId = 0;
 a3d::FaceId activeFace = 4;
 a3d::SelectionMode selectionMode = a3d::SelectionMode::Face;
@@ -595,6 +604,15 @@ Java_ai_arena_a3d_NativeRenderer_nativeSetSelectionMode(JNIEnv*, jobject, jint m
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSetSnapping(JNIEnv*, jobject, jboolean enabled, jfloat moveStep,
+                                                    jfloat angleDegrees, jfloat scaleStep) {
+    snappingEnabled = enabled == JNI_TRUE;
+    if (moveStep > 0.0001f) moveSnapStep = moveStep;
+    if (angleDegrees > 0.0001f) angleSnapRadians = angleDegrees * kPi / 180.0f;
+    if (scaleStep > 0.0001f) scaleSnapStep = scaleStep;
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeSelectAll(JNIEnv*, jobject) {
     editableMesh.selectAll(selectionMode);
     cubeSelected = true;
@@ -617,6 +635,9 @@ Java_ai_arena_a3d_NativeRenderer_nativeBeginMeshTransform(JNIEnv*, jobject, jflo
     transformAxis = preferredAxis >= 0 && preferredAxis <= 2 ? preferredAxis : pickGizmoAxis(x, y);
     transformBefore = editableMesh;
     transformChanged = false;
+    rawMoveDelta = {}; appliedMoveDelta = {};
+    rawTransformScalar = appliedTransformScalar = 0.0f;
+    appliedScaleFactor = 1.0f;
     return JNI_TRUE;
 }
 
@@ -632,11 +653,20 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDragMeshTransform(JNIEnv*, jobject, jfloat dx, jfloat dy) {
     const float horizontal = dx * 0.01f;
     const float vertical = -dy * 0.01f;
-    const Vec3 delta = transformAxis == 0 ? Vec3{horizontal,0,0}
+    const Vec3 input = transformAxis == 0 ? Vec3{horizontal,0,0}
                      : transformAxis == 1 ? Vec3{0,vertical,0}
                      : transformAxis == 2 ? Vec3{0,0,horizontal}
                                           : Vec3{horizontal,vertical,0};
-    if (!transformBefore || !editableMesh.translateSelected(selectionMode, {delta.x,delta.y,delta.z})) return JNI_FALSE;
+    if (!transformBefore) return JNI_FALSE;
+    rawMoveDelta = {rawMoveDelta.x+input.x, rawMoveDelta.y+input.y, rawMoveDelta.z+input.z};
+    const auto snap = [](float value, float step) { return std::round(value/step)*step; };
+    const Vec3 target = snappingEnabled
+        ? Vec3{snap(rawMoveDelta.x,moveSnapStep),snap(rawMoveDelta.y,moveSnapStep),snap(rawMoveDelta.z,moveSnapStep)}
+        : rawMoveDelta;
+    const Vec3 delta{target.x-appliedMoveDelta.x,target.y-appliedMoveDelta.y,target.z-appliedMoveDelta.z};
+    if (std::fabs(delta.x)+std::fabs(delta.y)+std::fabs(delta.z) < 0.00001f) return JNI_TRUE;
+    if (!editableMesh.translateSelected(selectionMode, {delta.x,delta.y,delta.z})) return JNI_FALSE;
+    appliedMoveDelta = target;
     transformChanged = true;
     createCube();
     return JNI_TRUE;
@@ -646,7 +676,13 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDragRotateTransform(JNIEnv*, jobject, jfloat dx, jfloat dy) {
     if (!transformBefore) return JNI_FALSE;
     const int axis = transformAxis >= 0 ? transformAxis : 1;
-    if (!editableMesh.rotateSelected(selectionMode, axis, (dx - dy) * 0.01f)) return JNI_FALSE;
+    rawTransformScalar += (dx - dy) * 0.01f;
+    const float target = snappingEnabled
+        ? std::round(rawTransformScalar/angleSnapRadians)*angleSnapRadians : rawTransformScalar;
+    const float delta = target-appliedTransformScalar;
+    if (std::fabs(delta) < 0.00001f) return JNI_TRUE;
+    if (!editableMesh.rotateSelected(selectionMode, axis, delta)) return JNI_FALSE;
+    appliedTransformScalar = target;
     transformChanged = true;
     createCube();
     return JNI_TRUE;
@@ -655,12 +691,18 @@ Java_ai_arena_a3d_NativeRenderer_nativeDragRotateTransform(JNIEnv*, jobject, jfl
 extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDragScaleTransform(JNIEnv*, jobject, jfloat dx, jfloat dy) {
     if (!transformBefore) return JNI_FALSE;
-    const float factor = std::exp((dx - dy) * 0.005f);
+    rawTransformScalar += (dx - dy) * 0.005f;
+    float targetFactor = std::exp(rawTransformScalar);
+    if (snappingEnabled) targetFactor = std::max(scaleSnapStep,
+        std::round(targetFactor/scaleSnapStep)*scaleSnapStep);
+    const float factor = targetFactor/appliedScaleFactor;
+    if (std::fabs(factor-1.0f) < 0.00001f) return JNI_TRUE;
     const Vec3 factors = transformAxis == 0 ? Vec3{factor,1,1}
                        : transformAxis == 1 ? Vec3{1,factor,1}
                        : transformAxis == 2 ? Vec3{1,1,factor}
                                             : Vec3{factor,factor,factor};
     if (!editableMesh.scaleSelected(selectionMode, {factors.x,factors.y,factors.z})) return JNI_FALSE;
+    appliedScaleFactor = targetFactor;
     transformChanged = true;
     createCube();
     return JNI_TRUE;

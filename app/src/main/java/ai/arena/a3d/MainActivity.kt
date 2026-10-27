@@ -65,6 +65,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectAll() }) { Text("All") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.invertSelection() }) { Text("Invert") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.clearSelection() }) { Text("Clear") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.toggleSnapping() }) { Text("Snap") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(-1) }) { Text("Move") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(0) }) { Text("Move X") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(1) }) { Text("Move Y") }
@@ -115,6 +116,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var moveToolActive = false
     private var transformTool = 0 // 0 move, 1 rotate, 2 scale
     private var moveAxis = -1
+    private var snappingEnabled = false
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -214,6 +216,11 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         transformTool = 2
         moveAxis = axis
     }
+    fun toggleSnapping() {
+        snappingEnabled = !snappingEnabled
+        val enabled = snappingEnabled
+        queueEvent { NativeRenderer.nativeSetSnapping(enabled, 0.25f, 15f, 0.1f) }
+    }
     fun selectAll() = queueEvent { NativeRenderer.nativeSelectAll() }
     fun invertSelection() = queueEvent { NativeRenderer.nativeInvertSelection() }
     fun clearSelection() = queueEvent { NativeRenderer.nativeClearSelection() }
@@ -249,6 +256,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativePan(dx: Float, dy: Float)
     external fun nativePick(x: Float, y: Float): Boolean
     external fun nativeSetSelectionMode(mode: Int)
+    external fun nativeSetSnapping(enabled: Boolean, moveStep: Float, angleDegrees: Float, scaleStep: Float)
     external fun nativeSelectAll()
     external fun nativeInvertSelection()
     external fun nativeClearSelection()
