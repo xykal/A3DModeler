@@ -172,7 +172,7 @@ bool EditableMesh::isEdgeSelected(VertexId first, VertexId second) const noexcep
     return selectedEdges_.contains(orderedEdge(first, second));
 }
 
-std::optional<Vec3> EditableMesh::selectionCenter(SelectionMode mode) const noexcept {
+std::set<VertexId> EditableMesh::selectedVertexIds(SelectionMode mode) const {
     std::set<VertexId> selected;
     if (mode == SelectionMode::Vertex) {
         for (std::size_t i = 0; i < vertices_.size(); ++i)
@@ -183,6 +183,11 @@ std::optional<Vec3> EditableMesh::selectionCenter(SelectionMode mode) const noex
         for (const auto& face : faces_)
             if (!face.deleted && face.selected) selected.insert(face.vertices.begin(), face.vertices.end());
     }
+    return selected;
+}
+
+std::optional<Vec3> EditableMesh::selectionCenter(SelectionMode mode) const noexcept {
+    const auto selected = selectedVertexIds(mode);
     if (selected.empty()) return std::nullopt;
     Vec3 center{};
     for (const VertexId id : selected) {
@@ -196,21 +201,47 @@ std::optional<Vec3> EditableMesh::selectionCenter(SelectionMode mode) const noex
 }
 
 bool EditableMesh::translateSelected(SelectionMode mode, Vec3 delta) noexcept {
-    std::set<VertexId> selected;
-    if (mode == SelectionMode::Vertex) {
-        for (std::size_t i = 0; i < vertices_.size(); ++i)
-            if (vertices_[i].selected) selected.insert(static_cast<VertexId>(i));
-    } else if (mode == SelectionMode::Edge) {
-        for (const auto& [first, second] : selectedEdges_) { selected.insert(first); selected.insert(second); }
-    } else {
-        for (const auto& face : faces_)
-            if (!face.deleted && face.selected) selected.insert(face.vertices.begin(), face.vertices.end());
-    }
+    const auto selected = selectedVertexIds(mode);
     if (selected.empty()) return false;
     for (const VertexId id : selected) {
         vertices_[id].position.x += delta.x;
         vertices_[id].position.y += delta.y;
         vertices_[id].position.z += delta.z;
+    }
+    recalculateNormals();
+    return true;
+}
+
+bool EditableMesh::rotateSelected(SelectionMode mode, int axis, float radians) noexcept {
+    if (axis < 0 || axis > 2) return false;
+    const auto selected = selectedVertexIds(mode);
+    const auto center = selectionCenter(mode);
+    if (selected.empty() || !center) return false;
+    const float cosine = std::cos(radians), sine = std::sin(radians);
+    for (const VertexId id : selected) {
+        Vec3 p{vertices_[id].position.x-center->x, vertices_[id].position.y-center->y,
+               vertices_[id].position.z-center->z};
+        Vec3 rotated = p;
+        if (axis == 0) rotated = {p.x, p.y*cosine-p.z*sine, p.y*sine+p.z*cosine};
+        else if (axis == 1) rotated = {p.x*cosine+p.z*sine, p.y, -p.x*sine+p.z*cosine};
+        else rotated = {p.x*cosine-p.y*sine, p.x*sine+p.y*cosine, p.z};
+        vertices_[id].position = {center->x+rotated.x, center->y+rotated.y, center->z+rotated.z};
+    }
+    recalculateNormals();
+    return true;
+}
+
+bool EditableMesh::scaleSelected(SelectionMode mode, Vec3 factors) noexcept {
+    if (std::fabs(factors.x) < 0.0001F || std::fabs(factors.y) < 0.0001F ||
+        std::fabs(factors.z) < 0.0001F) return false;
+    const auto selected = selectedVertexIds(mode);
+    const auto center = selectionCenter(mode);
+    if (selected.empty() || !center) return false;
+    for (const VertexId id : selected) {
+        auto& p = vertices_[id].position;
+        p = {center->x+(p.x-center->x)*factors.x,
+             center->y+(p.y-center->y)*factors.y,
+             center->z+(p.z-center->z)*factors.z};
     }
     recalculateNormals();
     return true;

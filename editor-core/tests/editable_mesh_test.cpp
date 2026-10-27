@@ -128,5 +128,17 @@ int main() {
     selectionMesh.clearSelection();
     assert(!selectionMesh.selectionCenter(a3d::SelectionMode::Face).has_value());
     assert(!selectionMesh.translateSelected(a3d::SelectionMode::Face, {1.0F, 0.0F, 0.0F}));
+
+    auto transformMesh = a3d::EditableMesh::plane(2.0F);
+    transformMesh.selectAll(a3d::SelectionMode::Vertex);
+    const auto centerBefore = transformMesh.selectionCenter(a3d::SelectionMode::Vertex);
+    assert(transformMesh.rotateSelected(a3d::SelectionMode::Vertex, 1, 3.14159265F * 0.5F));
+    const auto centerAfterRotate = transformMesh.selectionCenter(a3d::SelectionMode::Vertex);
+    assert(centerBefore->nearlyEquals(*centerAfterRotate));
+    assert(!transformMesh.rotateSelected(a3d::SelectionMode::Vertex, 4, 1.0F));
+    assert(transformMesh.scaleSelected(a3d::SelectionMode::Vertex, {2.0F, 1.0F, 0.5F}));
+    const auto centerAfterScale = transformMesh.selectionCenter(a3d::SelectionMode::Vertex);
+    assert(centerBefore->nearlyEquals(*centerAfterScale));
+    assert(!transformMesh.scaleSelected(a3d::SelectionMode::Vertex, {0.0F, 1.0F, 1.0F}));
     return 0;
 }

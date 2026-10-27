@@ -56,6 +56,8 @@ public:
     [[nodiscard]] bool isEdgeSelected(VertexId first, VertexId second) const noexcept;
     [[nodiscard]] std::optional<Vec3> selectionCenter(SelectionMode mode) const noexcept;
     [[nodiscard]] bool translateSelected(SelectionMode mode, Vec3 delta) noexcept;
+    [[nodiscard]] bool rotateSelected(SelectionMode mode, int axis, float radians) noexcept;
+    [[nodiscard]] bool scaleSelected(SelectionMode mode, Vec3 factors) noexcept;
     void clearSelection() noexcept;
     void selectAll(SelectionMode mode);
     void invertSelection(SelectionMode mode);
@@ -72,6 +74,7 @@ public:
 
 private:
     [[nodiscard]] std::set<std::pair<VertexId, VertexId>> topologyEdges() const;
+    [[nodiscard]] std::set<VertexId> selectedVertexIds(SelectionMode mode) const;
     [[nodiscard]] static std::pair<VertexId, VertexId> orderedEdge(VertexId first, VertexId second) noexcept;
 
     std::vector<MeshVertex> vertices_{};

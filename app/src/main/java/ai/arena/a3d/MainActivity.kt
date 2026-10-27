@@ -69,6 +69,13 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(0) }) { Text("Move X") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(1) }) { Text("Move Y") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.activateMoveTool(2) }) { Text("Move Z") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateRotateTool(0) }) { Text("Rot X") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateRotateTool(1) }) { Text("Rot Y") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateRotateTool(2) }) { Text("Rot Z") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(-1) }) { Text("Scale") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(0) }) { Text("Scale X") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(1) }) { Text("Scale Y") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.activateScaleTool(2) }) { Text("Scale Z") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.extrude(0.5f) }) { Text("Extrude") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.inset(0.2f) }) { Text("Inset") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.flipFace() }) { Text("Flip") }
@@ -106,6 +113,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var downY = 0f
     private var moved = false
     private var moveToolActive = false
+    private var transformTool = 0 // 0 move, 1 rotate, 2 scale
     private var moveAxis = -1
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -150,7 +158,11 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
                     if (moveToolActive) {
-                        queueEvent { NativeRenderer.nativeDragMeshTransform(dx, dy) }
+                        when (transformTool) {
+                            1 -> queueEvent { NativeRenderer.nativeDragRotateTransform(dx, dy) }
+                            2 -> queueEvent { NativeRenderer.nativeDragScaleTransform(dx, dy) }
+                            else -> queueEvent { NativeRenderer.nativeDragMeshTransform(dx, dy) }
+                        }
                     } else {
                         queueEvent { NativeRenderer.nativeOrbit(dx, dy) }
                     }
@@ -189,6 +201,17 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     }
     fun activateMoveTool(axis: Int) {
         moveToolActive = true
+        transformTool = 0
+        moveAxis = axis
+    }
+    fun activateRotateTool(axis: Int) {
+        moveToolActive = true
+        transformTool = 1
+        moveAxis = axis
+    }
+    fun activateScaleTool(axis: Int) {
+        moveToolActive = true
+        transformTool = 2
         moveAxis = axis
     }
     fun selectAll() = queueEvent { NativeRenderer.nativeSelectAll() }
@@ -232,6 +255,8 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeBeginMeshTransform(x: Float, y: Float, preferredAxis: Int): Boolean
     external fun nativeTranslateSelection(x: Float, y: Float, z: Float): Boolean
     external fun nativeDragMeshTransform(dx: Float, dy: Float): Boolean
+    external fun nativeDragRotateTransform(dx: Float, dy: Float): Boolean
+    external fun nativeDragScaleTransform(dx: Float, dy: Float): Boolean
     external fun nativeEndMeshTransform(): Boolean
     external fun nativeCancelMeshTransform()
     external fun nativeNudge(axis: Int, amount: Float): Boolean

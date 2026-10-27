@@ -643,6 +643,30 @@ Java_ai_arena_a3d_NativeRenderer_nativeDragMeshTransform(JNIEnv*, jobject, jfloa
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDragRotateTransform(JNIEnv*, jobject, jfloat dx, jfloat dy) {
+    if (!transformBefore) return JNI_FALSE;
+    const int axis = transformAxis >= 0 ? transformAxis : 1;
+    if (!editableMesh.rotateSelected(selectionMode, axis, (dx - dy) * 0.01f)) return JNI_FALSE;
+    transformChanged = true;
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeDragScaleTransform(JNIEnv*, jobject, jfloat dx, jfloat dy) {
+    if (!transformBefore) return JNI_FALSE;
+    const float factor = std::exp((dx - dy) * 0.005f);
+    const Vec3 factors = transformAxis == 0 ? Vec3{factor,1,1}
+                       : transformAxis == 1 ? Vec3{1,factor,1}
+                       : transformAxis == 2 ? Vec3{1,1,factor}
+                                            : Vec3{factor,factor,factor};
+    if (!editableMesh.scaleSelected(selectionMode, {factors.x,factors.y,factors.z})) return JNI_FALSE;
+    transformChanged = true;
+    createCube();
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeEndMeshTransform(JNIEnv*, jobject) {
     if (!transformBefore) return JNI_FALSE;
     bool committed = false;
