@@ -43,6 +43,81 @@ EditableMesh EditableMesh::plane(float size) {
     return mesh;
 }
 
+EditableMesh EditableMesh::uvSphere(float radius, int segments, int rings) {
+    EditableMesh mesh;
+    segments=std::max(3,segments); rings=std::max(2,rings); radius=std::max(0.0001F,radius);
+    constexpr float pi=3.14159265358979323846F;
+    const VertexId top=mesh.addVertex({0,radius,0});
+    for (int ring=1;ring<rings;++ring) {
+        const float phi=pi*static_cast<float>(ring)/static_cast<float>(rings);
+        const float y=radius*std::cos(phi), ringRadius=radius*std::sin(phi);
+        for (int segment=0;segment<segments;++segment) {
+            const float theta=2.0F*pi*static_cast<float>(segment)/static_cast<float>(segments);
+            (void)mesh.addVertex({ringRadius*std::cos(theta),y,ringRadius*std::sin(theta)});
+        }
+    }
+    const VertexId bottom=mesh.addVertex({0,-radius,0});
+    for (int segment=0;segment<segments;++segment) {
+        const VertexId a=1U+static_cast<VertexId>(segment);
+        const VertexId b=1U+static_cast<VertexId>((segment+1)%segments);
+        (void)mesh.addFace({top,b,a});
+    }
+    for (int ring=0;ring<rings-2;++ring) for (int segment=0;segment<segments;++segment) {
+        const VertexId a=1U+static_cast<VertexId>(ring*segments+segment);
+        const VertexId b=1U+static_cast<VertexId>(ring*segments+(segment+1)%segments);
+        const VertexId c=1U+static_cast<VertexId>((ring+1)*segments+(segment+1)%segments);
+        const VertexId d=1U+static_cast<VertexId>((ring+1)*segments+segment);
+        (void)mesh.addFace({a,b,c,d});
+    }
+    const VertexId lastRing=1U+static_cast<VertexId>((rings-2)*segments);
+    for (int segment=0;segment<segments;++segment) {
+        const VertexId a=lastRing+static_cast<VertexId>(segment);
+        const VertexId b=lastRing+static_cast<VertexId>((segment+1)%segments);
+        (void)mesh.addFace({a,b,bottom});
+    }
+    mesh.recalculateNormals(); return mesh;
+}
+
+EditableMesh EditableMesh::cylinder(float radius, float height, int segments) {
+    EditableMesh mesh;
+    segments=std::max(3,segments); radius=std::max(0.0001F,radius); const float half=height*0.5F;
+    constexpr float pi=3.14159265358979323846F;
+    for (int layer=0;layer<2;++layer) for (int segment=0;segment<segments;++segment) {
+        const float angle=2.0F*pi*static_cast<float>(segment)/static_cast<float>(segments);
+        (void)mesh.addVertex({radius*std::cos(angle),layer==0?-half:half,radius*std::sin(angle)});
+    }
+    for (int segment=0;segment<segments;++segment) {
+        const VertexId next=static_cast<VertexId>((segment+1)%segments);
+        const VertexId a=static_cast<VertexId>(segment), b=next;
+        const VertexId c=static_cast<VertexId>(segments)+next, d=static_cast<VertexId>(segments+segment);
+        (void)mesh.addFace({a,b,c,d});
+    }
+    std::vector<VertexId> bottom,top;
+    for (int segment=0;segment<segments;++segment) {
+        bottom.push_back(static_cast<VertexId>(segments-1-segment));
+        top.push_back(static_cast<VertexId>(segments+segment));
+    }
+    (void)mesh.addFace(std::move(bottom)); (void)mesh.addFace(std::move(top));
+    mesh.recalculateNormals(); return mesh;
+}
+
+EditableMesh EditableMesh::cone(float radius, float height, int segments) {
+    EditableMesh mesh;
+    segments=std::max(3,segments); radius=std::max(0.0001F,radius); const float half=height*0.5F;
+    constexpr float pi=3.14159265358979323846F;
+    for (int segment=0;segment<segments;++segment) {
+        const float angle=2.0F*pi*static_cast<float>(segment)/static_cast<float>(segments);
+        (void)mesh.addVertex({radius*std::cos(angle),-half,radius*std::sin(angle)});
+    }
+    const VertexId apex=mesh.addVertex({0,half,0});
+    for (int segment=0;segment<segments;++segment)
+        (void)mesh.addFace({static_cast<VertexId>(segment),static_cast<VertexId>((segment+1)%segments),apex});
+    std::vector<VertexId> base;
+    for (int segment=0;segment<segments;++segment) base.push_back(static_cast<VertexId>(segments-1-segment));
+    (void)mesh.addFace(std::move(base));
+    mesh.recalculateNormals(); return mesh;
+}
+
 VertexId EditableMesh::addVertex(Vec3 position) {
     vertices_.push_back({position});
     return static_cast<VertexId>(vertices_.size() - 1U);

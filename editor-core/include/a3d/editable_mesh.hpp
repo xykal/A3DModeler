@@ -43,6 +43,9 @@ class EditableMesh final {
 public:
     [[nodiscard]] static EditableMesh cube(float size = 2.0F);
     [[nodiscard]] static EditableMesh plane(float size = 2.0F);
+    [[nodiscard]] static EditableMesh uvSphere(float radius = 1.0F, int segments = 16, int rings = 8);
+    [[nodiscard]] static EditableMesh cylinder(float radius = 1.0F, float height = 2.0F, int segments = 16);
+    [[nodiscard]] static EditableMesh cone(float radius = 1.0F, float height = 2.0F, int segments = 16);
 
     [[nodiscard]] VertexId addVertex(Vec3 position);
     [[nodiscard]] std::optional<FaceId> addFace(std::vector<VertexId> vertices);

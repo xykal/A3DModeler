@@ -18,7 +18,7 @@ Native Android 3D editor technical spike. The current scaffold proves the Compos
 - Renderer cube backed by editor-core transform state
 - X/Y/Z move controls with native undo and redo actions
 - Editable polygon mesh core with vertex/face IDs, selection, topology validation, normals, statistics, deletion, and face extrusion
-- Procedural editable cube and plane primitives
+- Procedural editable cube, plane, UV sphere, cylinder, and cone primitives
 - Renderer geometry generated from `EditableMesh` instead of a hardcoded cube
 - Edit-mode extrusion rebuilds triangle and wireframe GPU buffers at runtime
 - Per-face GPU ID picking with active-face highlight

@@ -202,5 +202,21 @@ int main() {
     assert(triangulateMesh.stats().triangles==2);
     assert(triangulateMesh.selectedFaceCount()==2);
     assert(triangulateMesh.triangulateSelectedFaces().empty());
+
+    const auto sphere=a3d::EditableMesh::uvSphere(1.0F,8,4);
+    assert(sphere.validate());
+    assert(sphere.stats().vertices==26);
+    assert(sphere.stats().faces==32);
+    assert(sphere.stats().triangles==48);
+    const auto cylinder=a3d::EditableMesh::cylinder(1.0F,2.0F,8);
+    assert(cylinder.validate());
+    assert(cylinder.stats().vertices==16);
+    assert(cylinder.stats().faces==10);
+    assert(cylinder.stats().triangles==28);
+    const auto cone=a3d::EditableMesh::cone(1.0F,2.0F,8);
+    assert(cone.validate());
+    assert(cone.stats().vertices==9);
+    assert(cone.stats().faces==9);
+    assert(cone.stats().triangles==14);
     return 0;
 }
