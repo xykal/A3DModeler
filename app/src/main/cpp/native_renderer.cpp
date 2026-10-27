@@ -39,6 +39,7 @@ std::optional<a3d::EditableMesh> transformBefore;
 bool transformChanged = false;
 int transformAxis = -1;
 bool snappingEnabled = false;
+bool additiveSelection = false;
 float moveSnapStep = 0.25f;
 float angleSnapRadians = 15.0f * kPi / 180.0f;
 float scaleSnapStep = 0.1f;
@@ -170,6 +171,11 @@ void createGizmo() {
         {0,0,0,0.20f,0.45f,1.0f},{0,0,1.5f,0.20f,0.45f,1.0f}
     };
     bindMesh(gizmoVao, gizmoVbo, axes, sizeof(axes));
+}
+
+bool hasMeshSelection() {
+    return editableMesh.selectedVertexCount() > 0U || editableMesh.selectedEdgeCount() > 0U ||
+           editableMesh.selectedFaceCount() > 0U;
 }
 
 void recordAction(ActionKind kind) {
@@ -504,22 +510,24 @@ Java_ai_arena_a3d_NativeRenderer_nativePick(JNIEnv*, jobject, jfloat x, jfloat y
     const std::uint32_t encoded = static_cast<std::uint32_t>(pixel[0]) |
         (static_cast<std::uint32_t>(pixel[1]) << 8U) |
         (static_cast<std::uint32_t>(pixel[2]) << 16U);
-    cubeSelected = encoded > 0U;
-    editableMesh.clearSelection();
-    if (cubeSelected) {
+    if (!additiveSelection) editableMesh.clearSelection();
+    if (encoded > 0U) {
         const std::uint32_t picked = encoded - 1U;
-        if (selectionMode == a3d::SelectionMode::Face) {
+        if (selectionMode == a3d::SelectionMode::Face && picked < editableMesh.faces().size()) {
             activeFace = static_cast<a3d::FaceId>(picked);
-            (void)editableMesh.setFaceSelected(activeFace, true);
+            const bool next = additiveSelection ? !editableMesh.faces()[picked].selected : true;
+            (void)editableMesh.setFaceSelected(activeFace, next);
         } else if (selectionMode == a3d::SelectionMode::Edge && picked < edgeDrawRanges.size()) {
             const auto& edge = edgeDrawRanges[picked];
-            (void)editableMesh.setEdgeSelected(edge.first, edge.second, true);
+            const bool next = additiveSelection ? !editableMesh.isEdgeSelected(edge.first, edge.second) : true;
+            (void)editableMesh.setEdgeSelected(edge.first, edge.second, next);
         } else if (selectionMode == a3d::SelectionMode::Vertex && picked < editableMesh.vertices().size()) {
-            (void)editableMesh.setVertexSelected(static_cast<a3d::VertexId>(picked), true);
-        } else {
-            cubeSelected = false;
+            const auto vertex = static_cast<a3d::VertexId>(picked);
+            const bool next = additiveSelection ? !editableMesh.vertices()[picked].selected : true;
+            (void)editableMesh.setVertexSelected(vertex, next);
         }
     }
+    cubeSelected = hasMeshSelection();
     editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, viewportWidth, viewportHeight);
@@ -601,6 +609,12 @@ Java_ai_arena_a3d_NativeRenderer_nativeSetSelectionMode(JNIEnv*, jobject, jint m
                   : mode == 1 ? a3d::SelectionMode::Edge
                               : a3d::SelectionMode::Face;
     editableMesh.clearSelection();
+    cubeSelected = false;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeSetAdditiveSelection(JNIEnv*, jobject, jboolean enabled) {
+    additiveSelection = enabled == JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -622,11 +636,15 @@ Java_ai_arena_a3d_NativeRenderer_nativeSelectAll(JNIEnv*, jobject) {
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeInvertSelection(JNIEnv*, jobject) {
     editableMesh.invertSelection(selectionMode);
+    cubeSelected = hasMeshSelection();
+    editor.select(cubeSelected ? std::optional<a3d::ObjectId>{cubeObjectId} : std::nullopt);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeClearSelection(JNIEnv*, jobject) {
     editableMesh.clearSelection();
+    cubeSelected = false;
+    editor.select(std::nullopt);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

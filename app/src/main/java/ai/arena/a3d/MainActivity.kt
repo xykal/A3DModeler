@@ -62,6 +62,7 @@ private fun EditorScreen() {
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(0) }) { Text("Vertex") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(1) }) { Text("Edge") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(2) }) { Text("Face") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.toggleAdditiveSelection() }) { Text("Multi") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectAll() }) { Text("All") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.invertSelection() }) { Text("Invert") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.clearSelection() }) { Text("Clear") }
@@ -117,6 +118,7 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     private var transformTool = 0 // 0 move, 1 rotate, 2 scale
     private var moveAxis = -1
     private var snappingEnabled = false
+    private var additiveSelection = false
     private val scaleDetector = ScaleGestureDetector(context,
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -221,6 +223,11 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
         val enabled = snappingEnabled
         queueEvent { NativeRenderer.nativeSetSnapping(enabled, 0.25f, 15f, 0.1f) }
     }
+    fun toggleAdditiveSelection() {
+        additiveSelection = !additiveSelection
+        val enabled = additiveSelection
+        queueEvent { NativeRenderer.nativeSetAdditiveSelection(enabled) }
+    }
     fun selectAll() = queueEvent { NativeRenderer.nativeSelectAll() }
     fun invertSelection() = queueEvent { NativeRenderer.nativeInvertSelection() }
     fun clearSelection() = queueEvent { NativeRenderer.nativeClearSelection() }
@@ -256,6 +263,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativePan(dx: Float, dy: Float)
     external fun nativePick(x: Float, y: Float): Boolean
     external fun nativeSetSelectionMode(mode: Int)
+    external fun nativeSetAdditiveSelection(enabled: Boolean)
     external fun nativeSetSnapping(enabled: Boolean, moveStep: Float, angleDegrees: Float, scaleStep: Float)
     external fun nativeSelectAll()
     external fun nativeInvertSelection()
