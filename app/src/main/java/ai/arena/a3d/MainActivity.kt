@@ -185,6 +185,7 @@ private fun EditorScreen(
                 TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(3) }) { Text("+Cylinder") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.addPrimitive(4) }) { Text("+Cone") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.duplicateObject() }) { Text("Dup Obj") }
+                TextButton(onClick = { EditorViewportRegistry.viewport?.joinVisibleObjects() }) { Text("Join Visible") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.deleteObject() }) { Text("Del Obj") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(0) }) { Text("Vertex") }
                 TextButton(onClick = { EditorViewportRegistry.viewport?.selectionMode(1) }) { Text("Edge") }
@@ -439,6 +440,9 @@ private class EditorGLSurfaceView(context: Context) : GLSurfaceView(context) {
     fun duplicateObject() = queueEvent {
         NativeRenderer.nativeDuplicateObject(); emitSceneFromGlThread()
     }
+    fun joinVisibleObjects() = queueEvent {
+        NativeRenderer.nativeJoinVisibleObjects(); emitSceneFromGlThread()
+    }
     fun deleteObject() = queueEvent {
         NativeRenderer.nativeDeleteObject(); emitSceneFromGlThread()
     }
@@ -532,6 +536,7 @@ private object NativeRenderer : GLSurfaceView.Renderer {
     external fun nativeAddPrimitive(type: Int): Long
     external fun nativeSelectObject(id: Long): Boolean
     external fun nativeDuplicateObject(): Long
+    external fun nativeJoinVisibleObjects(): Boolean
     external fun nativeDeleteObject(): Boolean
     external fun nativeSetObjectVisible(id: Long, visible: Boolean): Boolean
     external fun nativeSetObjectLocked(id: Long, locked: Boolean): Boolean

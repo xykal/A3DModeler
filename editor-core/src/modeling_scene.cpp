@@ -53,6 +53,23 @@ std::optional<ObjectId> ModelingScene::separateSelectedFaces(ObjectId sourceId) 
     return id;
 }
 
+std::size_t ModelingScene::joinVisibleObjects(ObjectId destinationId) {
+    auto* destinationMesh=mesh(destinationId);
+    const auto* destinationObject=object(destinationId);
+    if (!destinationMesh || !destinationObject || destinationObject->locked) return 0;
+    const Transform destinationTransform=destinationObject->transform;
+    std::vector<ObjectId> joined;
+    for (const auto id:objectIds()) {
+        if (id==destinationId) continue;
+        const auto* sourceObject=object(id); const auto* sourceMesh=mesh(id);
+        if (!sourceObject || !sourceMesh || !sourceObject->visible || sourceObject->locked) continue;
+        if (destinationMesh->appendTransformed(*sourceMesh,sourceObject->transform,destinationTransform)) joined.push_back(id);
+    }
+    for (const auto id:joined) { meshes_.erase(id); (void)scene_.removeObject(id); }
+    activeObject_=destinationId;
+    return joined.size();
+}
+
 bool ModelingScene::removeObject(ObjectId id) {
     if (!scene_.find(id)) return false;
     meshes_.erase(id);

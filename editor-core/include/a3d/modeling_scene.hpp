@@ -26,6 +26,7 @@ public:
     [[nodiscard]] ObjectId addMesh(EditableMesh mesh, std::string_view name = {});
     [[nodiscard]] std::optional<ObjectId> duplicateObject(ObjectId sourceId);
     [[nodiscard]] std::optional<ObjectId> separateSelectedFaces(ObjectId sourceId);
+    [[nodiscard]] std::size_t joinVisibleObjects(ObjectId destinationId);
     [[nodiscard]] bool removeObject(ObjectId id);
     [[nodiscard]] bool selectObject(std::optional<ObjectId> id) noexcept;
     [[nodiscard]] bool applyTransform(ObjectId id, const Transform& transform);

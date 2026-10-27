@@ -59,5 +59,18 @@ int main() {
     assert(!scene.mesh(sphere));
     assert(!scene.object(sphere));
     assert(!scene.removeObject(sphere));
+
+    a3d::ModelingScene joinScene;
+    const auto joinTarget=joinScene.addPrimitive(a3d::PrimitiveType::Cube,"Target");
+    const auto joinSource=joinScene.addPrimitive(a3d::PrimitiveType::Plane,"Source");
+    joinScene.object(joinSource)->transform.position={5.0F,0.0F,0.0F};
+    const auto beforeJoin=joinScene.mesh(joinTarget)->stats();
+    assert(joinScene.joinVisibleObjects(joinTarget)==1);
+    assert(joinScene.objectIds().size()==1);
+    assert(joinScene.mesh(joinTarget)->stats().vertices==beforeJoin.vertices+4);
+    bool foundTranslated=false;
+    for (const auto& vertex:joinScene.mesh(joinTarget)->vertices()) if (vertex.position.x>4.0F) foundTranslated=true;
+    assert(foundTranslated);
+    assert(joinScene.mesh(joinTarget)->validate());
     return 0;
 }

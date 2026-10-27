@@ -472,6 +472,12 @@ Java_ai_arena_a3d_NativeRenderer_nativeDuplicateObject(JNIEnv*, jobject) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_ai_arena_a3d_NativeRenderer_nativeJoinVisibleObjects(JNIEnv*, jobject) {
+    if (modelingScene.joinVisibleObjects(cubeObjectId)==0) return JNI_FALSE;
+    return activateObject(cubeObjectId)?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_ai_arena_a3d_NativeRenderer_nativeDeleteObject(JNIEnv*, jobject) {
     if (modelingScene.objectIds().size()<=1U) return JNI_FALSE;
     const auto deleting=cubeObjectId;

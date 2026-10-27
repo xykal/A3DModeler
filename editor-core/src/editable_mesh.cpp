@@ -19,6 +19,19 @@ Vec3 normalized(Vec3 value) noexcept {
     if (length <= 0.000001F) return {};
     return {value.x/length, value.y/length, value.z/length};
 }
+Vec3 rotateX(Vec3 p,float a) noexcept { const float c=std::cos(a),s=std::sin(a); return {p.x,p.y*c-p.z*s,p.y*s+p.z*c}; }
+Vec3 rotateY(Vec3 p,float a) noexcept { const float c=std::cos(a),s=std::sin(a); return {p.x*c+p.z*s,p.y,-p.x*s+p.z*c}; }
+Vec3 rotateZ(Vec3 p,float a) noexcept { const float c=std::cos(a),s=std::sin(a); return {p.x*c-p.y*s,p.x*s+p.y*c,p.z}; }
+Vec3 toWorld(Vec3 p,const Transform& t) noexcept {
+    p={p.x*t.scale.x,p.y*t.scale.y,p.z*t.scale.z};
+    p=rotateZ(rotateY(rotateX(p,t.rotationEuler.x),t.rotationEuler.y),t.rotationEuler.z);
+    return {p.x+t.position.x,p.y+t.position.y,p.z+t.position.z};
+}
+Vec3 toLocal(Vec3 p,const Transform& t) noexcept {
+    p={p.x-t.position.x,p.y-t.position.y,p.z-t.position.z};
+    p=rotateX(rotateY(rotateZ(p,-t.rotationEuler.z),-t.rotationEuler.y),-t.rotationEuler.x);
+    return {p.x/t.scale.x,p.y/t.scale.y,p.z/t.scale.z};
+}
 }
 
 EditableMesh EditableMesh::cube(float size) {
@@ -347,6 +360,26 @@ std::unique_ptr<EditableMesh> EditableMesh::extractSelectedFaces() {
     selectedEdges_.clear();
     recalculateNormals(); extracted->recalculateNormals();
     return extracted;
+}
+
+bool EditableMesh::appendTransformed(const EditableMesh& source,const Transform& sourceTransform,
+                                     const Transform& destinationTransform) {
+    if (std::abs(destinationTransform.scale.x)<0.000001F ||
+        std::abs(destinationTransform.scale.y)<0.000001F ||
+        std::abs(destinationTransform.scale.z)<0.000001F) return false;
+    std::vector<VertexId> remap;
+    remap.reserve(source.vertices_.size());
+    for (const auto& vertex:source.vertices_)
+        remap.push_back(addVertex(toLocal(toWorld(vertex.position,sourceTransform),destinationTransform)));
+    for (const auto& sourceFace:source.faces_) if (!sourceFace.deleted) {
+        std::vector<VertexId> face;
+        face.reserve(sourceFace.vertices.size());
+        for (const auto vertex:sourceFace.vertices) face.push_back(remap[vertex]);
+        const auto added=addFace(std::move(face));
+        if (!added) return false;
+    }
+    recalculateNormals();
+    return true;
 }
 
 std::optional<FaceId> EditableMesh::extrudeFace(FaceId faceId, float distance) {
